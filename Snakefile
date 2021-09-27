@@ -1,44 +1,49 @@
 import os
 
+
 configfile: "config.yaml"
-report: os.path.join(config['docs_dir'], 'workflow.rst')
+
+
+report: os.path.join(config["docs_dir"], "workflow.rst")
 
 
 rule all:
     input:
-        'all.done'
+        "all.done",
+
 
 rule start_over:
-    output: touch('start_over.marker')
+    output:
+        touch("start_over.marker"),
 
 
 rule extract_celltag_reads:
     input:
-        possorted_bam = lambda wildcards:
-            f"{config['raw_dir']}count/{wildcards.sample}/outs/gex_possorted_bam.bam",
-        start_over_marker = 'start_over.marker'
+        possorted_bam=lambda wildcards: f"{config['raw_dir']}count/{wildcards.sample}/outs/gex_possorted_bam.bam",
+        start_over_marker="start_over.marker",
     output:
         celltag_reads=expand(
             "{output_dir}/{sample}/celltag/v{config['celltag_version']}.celltag.reads.out",
-            output_dir=config['output_dir'],
-            allow_missing=True),
+            output_dir=config["output_dir"],
+            allow_missing=True,
+        ),
     conda:
-        'envs/DB_Qinyu-multiome_snakemake_R.yaml',
+        "envs/DB_Qinyu-multiome_snakemake_R.yaml"
     shell:
         "samtools view {input.possorted_bam} | grep -P 'TGTACG[ACTG]{8}GAATTC' > {output.celltag_reads}"
 
 
 rule parse_celltag_reads:
     input:
-        celltag_reads = lambda wildcards:
-            f"{config['output_dir']}{wildcards.sample}/celltag/v{config['celltag_version']}.celltag.reads.out",
+        celltag_reads=lambda wildcards: f"{config['output_dir']}{wildcards.sample}/celltag/v{config['celltag_version']}.celltag.reads.out",
     output:
         parsed_tsv=expand(
             "{output_dir}/{sample}/celltag/v{config['celltag_version']}.celltag.parsed.tsv",
-            output_dir=config['output_dir'],
-            allow_missing=True),
+            output_dir=config["output_dir"],
+            allow_missing=True,
+        ),
     conda:
-        'envs/DB_Qinyu-multiome_snakemake_R.yaml',
+        "envs/DB_Qinyu-multiome_snakemake_R.yaml"
     shell:
         "./src/BiddyetalWorkflow/scripts/celltag.parse.reads.10x.sh -v tagregex='TGTACG([ACTG]{8})GAATTC' {input.celltag_reads} > {output.parsed_tsv}"
 
@@ -47,29 +52,29 @@ rule unzip_10X_barcode_tsv:
     input:
         barcodes_10X=f"{config['raw_dir']}count/{wildcards.sample}/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
     output:
-        expand("{output_dir}{sample}/10X_barcodes.tsv",
-               output_dir=config['output_dir'],
-              allow_missing=True)
+        expand(
+            "{output_dir}{sample}/10X_barcodes.tsv",
+            output_dir=config["output_dir"],
+            allow_missing=True,
+        ),
     shell:
         "gunzip {input.barcodes_10X} {output}"
 
+
 rule quantify_celltags:
     input:
-        celltag_reads = lambda wildcards:
-            f"{config['output_dir']}{wildcards.sample}/celltag/v{config['celltag_version']}.celltag.reads.out",
+        celltag_reads=lambda wildcards: f"{config['output_dir']}{wildcards.sample}/celltag/v{config['celltag_version']}.celltag.reads.out",
         parsed_tsv=f"{config['output_dir']}/{wildcards.sample}/celltag/v{config['celltag_version']}.celltag.parsed.tsv",
         barcodes_10X=f"{config['output_dir']}{wildcards.sample}/10X_barcodes.tsv",
     output:
-        output_files=expand("{config['output_dir']}/{sample}/celltags/{prefix}{filetypes}",
-              prefix='CT',
-              filetypes=[
-                  '.celltag.stats.txt',
-                  '.matrix.tsv',
-                  '.celltag.matrix.Rds'
-              ],
-              allow_missing=True),
+        output_files=expand(
+            "{config['output_dir']}/{sample}/celltags/{prefix}{filetypes}",
+            prefix="CT",
+            filetypes=[".celltag.stats.txt", ".matrix.tsv", ".celltag.matrix.Rds"],
+            allow_missing=True,
+        ),
     conda:
-        'envs/DB_Qinyu-multiome_snakemake_R.yaml',
+        "envs/DB_Qinyu-multiome_snakemake_R.yaml"
     params:
         prefix=f"{config['output_dir']}{wildcards.sample}/celltag/CT",
     shell:
@@ -110,7 +115,7 @@ rule quantify_celltags:
 #         "docker://razofz/k562_scrna-seq:0.1"
 #     script:
 #         "seurat-clustering_smk.R"
-# 
+#
 # rule seurat_all_integration:
 #     input:
 #         seurat_object = lambda wildcards:
@@ -130,7 +135,7 @@ rule quantify_celltags:
 #         "docker://razofz/k562_scrna-seq:0.1"
 #     script:
 #         "seurat-all-integration_smk.R"
-# 
+#
 # rule seurat_rpca_integration:
 #     input:
 #         resistant_seurat_object = lambda wildcards:
@@ -160,7 +165,7 @@ rule quantify_celltags:
 #         "docker://razofz/k562_scrna-seq:0.1"
 #     script:
 #         "seurat-rpca-integration_smk.R"
-# 
+#
 # rule seurat_integrated_diff_exp:
 #     input:
 #         seurat_object = lambda wildcards:
@@ -244,7 +249,7 @@ rule quantify_celltags:
 #         "docker://razofz/k562_scrna-seq:0.1"
 #     script:
 #         "seurat-all-integrated-diff-exp_smk.R"
-# 
+#
 # rule seurat_integrated_concurrent_exp:
 #     input:
 #         seurat_object = lambda wildcards:
@@ -316,7 +321,7 @@ rule quantify_celltags:
 #         "../../../envs/snakes-and-pirates.yaml"
 #     notebook:
 #         '../../../notebooks/k562-rna-seq/integration-concurrent-exp.ipynb'
-# 
+#
 # rule seurat_diff_exp_testing:
 #     input:
 #         seurat_object = lambda wildcards:
@@ -334,7 +339,7 @@ rule quantify_celltags:
 #         "docker://razofz/k562_scrna-seq:0.1"
 #     script:
 #         "seurat-diff-expr-testing_smk.R"
-# 
+#
 # rule seurat_mapping:
 #     input:
 #         query = lambda wildcards:
@@ -350,7 +355,7 @@ rule quantify_celltags:
 #         "docker://razofz/k562_scrna-seq:0.1"
 #     script:
 #         "seurat-mapping_smk.R"
-# 
+#
 # rule export_mappings:
 #     input:
 #         mapped_seurat_object = lambda wildcards:
@@ -363,7 +368,7 @@ rule quantify_celltags:
 #         "docker://razofz/k562_scrna-seq:0.1"
 #     script:
 #         "seurat-export-mappings_smk.R"
-# 
+#
 # rule relative_enrichment_csv:
 #     input:
 #         mappings_csv = lambda wildcards:
@@ -383,7 +388,7 @@ rule quantify_celltags:
 #         "docker://razofz/k562_scrna-seq_py:0.1"
 #     script:
 #         "relative_enrichment_csv_smk.py"
-# 
+#
 # rule relative_enrichment_plots:
 #     input:
 #         mappings_csv = lambda wildcards:
@@ -413,7 +418,7 @@ rule quantify_celltags:
 #         "docker://razofz/k562_scrna-seq_py:0.1"
 #     script:
 #         "relative_enrichment_plots_smk.py"
-# 
+#
 # rule mapping_sanity_plots:
 #     input:
 #         anchorset_rds = lambda wildcards:
@@ -437,11 +442,11 @@ rule quantify_celltags:
 #         "docker://razofz/k562_scrna-seq:0.1"
 #     script:
 #         "mapping-sanity-plots_smk.R"
-# 
+#
 # ################################################################################
 # # Nabo part
 # ################################################################################
-# 
+#
 # rule nabo_export_seurat_metadata:
 #     input:
 #         seurat_object = lambda wildcards:
@@ -460,7 +465,7 @@ rule quantify_celltags:
 #         "docker://razofz/k562_scrna-seq:0.1"
 #     script:
 #         "seurat-export-metadata_smk.R"
-# 
+#
 # rule nabo_make_h5:
 #     input:
 #         observation_dir = lambda wildcards:
@@ -484,7 +489,7 @@ rule quantify_celltags:
 #         "docker://razofz/k562_scrna-seq_nabo:0.2"
 #     script:
 #         "nabo_make_h5.py"
-# 
+#
 # rule nabo_mapping:
 #     input:
 #         reference_pca_h5 = lambda wildcards:
@@ -509,7 +514,7 @@ rule quantify_celltags:
 #         "docker://razofz/k562_scrna-seq_nabo:0.2"
 #     script:
 #         "nabo_mapping_smk.py"
-# 
+#
 # rule nabo_mapping_plots:
 #     input:
 #         query_seurat_clusters = lambda wildcards:
@@ -602,7 +607,7 @@ rule quantify_celltags:
 #         "docker://razofz/k562_scrna-seq_nabo:0.2"
 #     script:
 #         "nabo_mapping_plots_smk.py"
-# 
+#
 # rule nabo_resistant_NAs_plot:
 #     input:
 #         query_umap = lambda wildcards:
@@ -623,11 +628,11 @@ rule quantify_celltags:
 #         "docker://razofz/k562_scrna-seq_nabo:0.2"
 #     script:
 #         "nabo_resistant_cells_in_enriched_sensitive_clusters_smk.py"
-# 
+#
 # ################################################################################
 # # Gather all final outputs, to enable topmost 'all' rule
 # ################################################################################
-# 
+#
 # rule gather_seurat:
 #     input:
 #         mapping_plots=expand("{report_dir}/mapping/{observation}/{query_on_ref}/{reduction}/{plot}.svg",
@@ -674,7 +679,7 @@ rule quantify_celltags:
 #             "/seurat_all-integration/fl/RPCA-concurrent-expression-marker-approach.csv",
 #     output:
 #         touch('seurat.done')
-# 
+#
 # rule gather_nabo:
 #     input:
 # #         rules.nabo_mapping_plots.output
@@ -712,9 +717,7 @@ rule quantify_celltags:
 # #         "/nabo/{observation}/{query}_on_{ref}/"),
 #     output:
 #         touch('nabo.done')
-# 
-
-
+#
 # rule gather_all:
 #     input:
 #     #         nabo='nabo.done',
