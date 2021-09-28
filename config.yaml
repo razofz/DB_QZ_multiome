@@ -1,9 +1,12 @@
-samples: ["GFP_EPCR_LSKs_RNA", "GFP_Viable_RNA"]
-raw_dir: "data/raw/"
-output_dir: "data/processed/"
-report_dir: "reports/"
-docs_dir: "docs/"
+---
+samples:
+    EPCR: "GFP_EPCR_LSKs_RNA"
+    Viable: "GFP_Viable_RNA"
+raw_dir: "data/raw"
+output_dir: "data/processed"
+report_dir: "reports"
+docs_dir: "docs"
 data_owner: "DB_Q"
 project_name: "DB_Qinyu-multiome"
 n_threads: 16
-celltag_version: 3
+celltag_version: "v3"
