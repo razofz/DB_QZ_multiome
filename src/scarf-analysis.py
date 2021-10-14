@@ -157,6 +157,7 @@ print('all done!')
 # )
 
 # how to check PCA dimensions? e. g. elbow plot
+# A: there's a elbow_plot param for .. that function
 
 # for make_graph: if feat_key.startswith('I__'): do not prepend 'I__'
 
@@ -176,3 +177,19 @@ print('all done!')
 # P.P.S.: should probably write better documentation for how markers are found.
 
 # how can the clustering assign a cluster -1??
+
+# maybe rethink only public methods on scaarf docs, don't get any documentation
+# of attributes contained in __init__ methods
+
+# docs, data org, mulit-omics
+# also, in zarr trees, "synchronize the" what?
+# "The sparse matrix above will load the If you would like to load a graph[..]"
+# what?
+
+# can one remove parts of the zarr tree?
+# How about doing things only read mode from zarr file (with ds) and if the
+# results are good, THEN save to zarr hierarchy?
+
+# talked w para about idempotency, if same command is re-run w same params, the
+# old output is replaced. This is good for workflow systems, if one works with
+# marker files on knows that the results aren't changed under the hood.

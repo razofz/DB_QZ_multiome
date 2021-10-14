@@ -84,6 +84,13 @@ target/
 # vim
 *.swp
 *.swo
+*session.vim*
 
 # Mypy cache
 .mypy_cache/
+
+# raz-added
+.smk_markers
+.snakemake
+*.gitkeep*
+

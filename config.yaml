@@ -9,4 +9,4 @@ docs_dir: "docs"
 data_owner: "DB_Q"
 project_name: "DB_Qinyu-multiome"
 n_threads: 16
-celltag_version: "v3"
+celltag_version: "3"
