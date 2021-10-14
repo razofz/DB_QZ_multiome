@@ -94,3 +94,5 @@ target/
 .snakemake
 *.gitkeep*
 
+reports/smkreport.html
+
