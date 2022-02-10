@@ -95,4 +95,4 @@ target/
 *.gitkeep*
 
 reports/smkreport.html
-
+*.~lock*

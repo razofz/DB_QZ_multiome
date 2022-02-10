@@ -1,7 +1,7 @@
 import os
 
 
-configfile: "config.yaml"
+configfile: "celltag-config.yaml"
 
 
 #report: os.path.join(config["docs_dir"], "workflow.rst")
