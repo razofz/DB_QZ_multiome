@@ -3,53 +3,30 @@ suppressPackageStartupMessages(library(Signac))
 suppressPackageStartupMessages(library(harmony))
 suppressPackageStartupMessages(library(EnsDb.Mmusculus.v79))
 suppressPackageStartupMessages(library(stringr))
-set.seed(1234)
+set.seed(snakemake@config[["seed"]])
 
-###############
-#  Load data  #
-###############
 
-data <- Read10X_h5(snakemake@input[["h5_10X"]])
+################################################################################
+#                                  Load data                                   #
+################################################################################
 
-sobj <- CreateSeuratObject(
-  counts = data$`Gene Expression`,
-  assay = "RNA"
-)
-sobj[["percent.mt"]] <- PercentageFeatureSet(sobj, pattern = "^MT")
+sobj <- readRDS(snakemake@input[["seurat_object"]])
 
-annotation <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79, verbose = F)
-seqlevelsStyle(annotation) <- "UCSC"
-sobj[["ATAC"]] <- CreateChromatinAssay(
-  counts = data$Peaks,
-  sep = c(":", "-"),
-  fragments = snakemake@input[["fragments_file"]],
-  annotation = annotation
-)
-DefaultAssay(sobj) <- "ATAC"
-genome(sobj) <- "mm10"
-sobj <- NucleosomeSignal(sobj, verbose = F)
-sobj <- TSSEnrichment(sobj, verbose = F)
-sobj <- subset(
-  x = sobj,
-  subset = nCount_ATAC < 1e5 &
-    nCount_ATAC > 1000 &
-    nCount_RNA < 5e4 &
-    nCount_RNA > 1000 &
-    nucleosome_signal < 3 &
-    TSS.enrichment > 3
-)
-##############
-#  RNA part  #
-##############
+################################################################################
+#                                      RNA part                                #
+################################################################################
 
 DefaultAssay(sobj) <- "RNA"
 
-sobj <- NormalizeData(sobj)
-sobj <- FindVariableFeatures(sobj)
-sobj <- ScaleData(sobj)
-sobj <- RunPCA(sobj, verbose = FALSE)
+sobj <- NormalizeData(sobj, verbose = F)
+sobj <- FindVariableFeatures(sobj, verbose = F)
+sobj <- ScaleData(sobj, verbose = F)
+sobj <- RunPCA(sobj, verbose = F)
 
-# which dataset/sample did each cell come from?
+###################################################
+#  which dataset/sample did each cell come from?  #
+###################################################
+
 sobj[["is_Immature"]] <- str_detect(Cells(sobj), "-2")
 origin <- sobj[["is_Immature"]]
 origin <- unlist(origin)
@@ -57,16 +34,19 @@ origin[origin == T] <- "Immature"
 origin[origin == F] <- "Diverse"
 sobj[["origin"]] <- origin
 
-# integrate with Harmony
+############################
+#  integrate with Harmony  #
+############################
+
 sobj <- RunHarmony(
   sobj,
   group.by.vars = "origin",
-  reduction.save <- "harmonyRNA"
 )
+sobj@reductions$harmony_RNA <- sobj@reductions$harmony
 
 sobj <- FindNeighbors(
   sobj,
-  reduction = "harmonyRNA",
+  reduction = "harmony_RNA",
   dims = 1:30,
   assay = "RNA",
   graph.name = c("NNharmonyRNA", "SNNharmonyRNA")
@@ -78,16 +58,19 @@ sobj <- FindClusters(
 sobj[["clusters_RNA_harmony"]] <- Idents(sobj)
 sobj <- RunUMAP(
   sobj,
-  reduction = "harmonyRNA",
+  reduction = "harmony_RNA",
   dims = 1:30,
+  reduction.name = "UMAPharmonyRNA",
   reduction.key = "UMAPharmonyRNA_",
   nn.name = "NNharmonyRNA",
-  graph = "SNNharmonyRNA",
   assay = "RNA",
   umap.method = "umap-learn"
 )
 
-# Do the same for aggregated/unintegrated
+#############################################
+#  Do the same for aggregated/unintegrated  #
+#############################################
+
 sobj <- FindNeighbors(
   sobj,
   reduction = "pca",
@@ -102,32 +85,32 @@ sobj <- FindClusters(
 sobj[["clusters_RNA_unintegrated"]] <- Idents(sobj)
 sobj <- RunUMAP(
   sobj,
-  reduction = "unintegratedRNA",
+  reduction = "pca",
   dims = 1:30,
+  reduction.name = "UMAPunintegratedRNA",
   reduction.key = "UMAPunintegratedRNA_",
   nn.name = "NNunintegratedRNA",
-  graph = "SNNunintegratedRNA",
   assay = "RNA",
   umap.method = "umap-learn"
 )
 
-###############
-#  ATAC part  #
-###############
+################################################################################
+#                                  ATAC part                                   #
+################################################################################
 
 DefaultAssay(sobj) <- "ATAC"
 
-sobj <- FindTopFeatures(sobj, min.cutoff = 5)
-sobj <- RunTFIDF(sobj)
-sobj <- RunSVD(sobj)
+sobj <- FindTopFeatures(sobj, min.cutoff = 5, verbose = F)
+sobj <- RunTFIDF(sobj, verbose = F)
+sobj <- RunSVD(sobj, verbose = F)
 sobj <- RunHarmony(
   sobj,
   group.by.vars = "origin",
   reduction = "lsi",
   assay.use = "ATAC",
   project.dim = F,
-  reduction.save = "harmonyATAC"
 )
+sobj@reductions$harmony_RNA <- sobj@reductions$harmony
 
 sobj <- FindNeighbors(
   sobj,
@@ -145,17 +128,20 @@ sobj <- RunUMAP(
   sobj,
   reduction = "harmonyATAC",
   dims = 2:30,
+  reduction.name = "UMAPharmonyATAC",
   reduction.key = "UMAPharmonyATAC_",
   nn.name = "NNharmonyATAC",
-  graph = "SNNharmonyATAC",
   assay = "ATAC",
   umap.method = "umap-learn"
 )
 
-# Do the same for aggregated/unintegrated
+#############################################
+#  Do the same for aggregated/unintegrated  #
+#############################################
+
 sobj <- FindNeighbors(
   sobj,
-  reduction = "unintegratedATAC",
+  reduction = "lsi",
   dims = 1:30,
   assay = "ATAC",
   graph.name = c("NNunintegratedATAC", "SNNunintegratedATAC")
@@ -167,17 +153,17 @@ sobj <- FindClusters(
 sobj[["clusters_ATAC_unintegrated"]] <- Idents(sobj)
 sobj <- RunUMAP(
   sobj,
-  reduction = "unintegratedATAC",
+  reduction = "lsi",
   dims = 2:30,
+  reduction.name = "UMAPunintegratedATAC",
   reduction.key = "UMAPunintegratedATAC_",
   nn.name = "NNunintegratedATAC",
-  graph = "SNNunintegratedATAC",
   assay = "ATAC",
   umap.method = "umap-learn"
 )
 
-########################
-#  Save Seurat object  #
-########################
+################################################################################
+#                              Save Seurat object                              #
+################################################################################
 
 saveRDS(sobj, snakemake@output[["seurat_object"]])

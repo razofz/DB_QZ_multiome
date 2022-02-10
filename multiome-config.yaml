@@ -9,3 +9,4 @@ docs_dir: "docs"
 data_owner: "DB_QZ"
 project_name: "DB_QZ_multiome"
 n_threads: 16
+seed: 1234
