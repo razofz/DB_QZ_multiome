@@ -2,58 +2,123 @@ suppressPackageStartupMessages(library(Seurat))
 suppressPackageStartupMessages(library(Signac))
 suppressPackageStartupMessages(library(stringr))
 suppressPackageStartupMessages(library(ggplot2))
-set.seed(1234)
+set.seed(snakemake@config[["seed"]])
 
-###############
-#  Load data  #
-###############
+################################################################################
+#                                  Load data                                   #
+################################################################################
 
 sobj <- readRDS(snakemake@input[["seurat_object"]])
 
-##############
-#  Plot RNA  #
-##############
+################################################################################
+#                                   Plotting                                   #
+################################################################################
 
-DefaultAssay(sobj) <- "RNA"
+single_width <- 16
+single_height <- 14
+double_width <- 32
+double_height <- 16
 
-DimPlot(sobj, 
+evil_plot <- function(
+    modality = "RNA",
+    integration_state = "integrated",
+    plot_colouring = "origin"
+  ) {
+  if (integration_state == "integrated") {
+    reduction <- "harmony"
+  } else {
+    reduction <- "unintegrated"
+  }
 
+  if (plot_colouring == "clusters_split") {
+    group <- str_c(
+      "clusters_",
+      modality,
+      "_",
+      reduction
+    )
+    p <- DimPlot(
+      sobj,
+      reduction = str_c("UMAP", reduction, modality),
+      group.by = group,
+      split.by = "origin",
+      shuffle = T
+    )
 
+    width <- double_width
+    height <- double_height
+  } else {
+    if (plot_colouring == "clusters") {
+      group <- str_c(
+        "clusters_",
+        modality,
+        "_",
+        reduction
+      )
+    } else {
+      group <- "origin"
+    }
 
-sobj <- NormalizeData(sobj)
-sobj <- FindVariableFeatures(sobj)
-sobj <- ScaleData(sobj)
-sobj <- RunPCA(sobj, verbose = FALSE)
+    p <- DimPlot(
+      sobj,
+      reduction = str_c("UMAP", reduction, modality),
+      group.by = group,
+      shuffle = T
+    )
 
-# which dataset/sample did each cell come from?
-sobj[["is_Immature"]] <- str_detect(Cells(sobj), "-2")
-origin <- sobj[["is_Immature"]]
-origin <- unlist(origin)
-origin[origin == T] <- "Immature"
-origin[origin == F] <- "Diverse"
-sobj[["origin"]] <- origin
+    width <- single_width
+    height <- single_height
+  }
 
-# integrate with Harmony
-sobj <- RunHarmony(sobj, group.by.vars = "origin")
+  p <- p + ggtitle(str_c(
+    str_to_title(integration_state),
+    " ",
+    modality,
+    " coloured on ",
+    plot_colouring
+  ))
 
-sobj <- RunUMAP(sobj, reduction = "harmony", dims = 1:30)
-sobj <- FindNeighbors(sobj, reduction = "harmony", dims = 1:30) %>%
-  FindClusters()
+  smk_output <- str_c(
+                  "plot_",
+                  integration_state,
+                  "_",
+                  modality,
+                  "_",
+                  plot_colouring
+                )
 
-###############
-#  ATAC part  #
-###############
+  ggsave(
+    snakemake@output[[smk_output]],
+    plot = p,
+    device = "svg",
+    width = width,
+    height = height,
+    units = "cm",
+    dpi = "retina"
+  )
+}
 
-DefaultAssay(sobj) <- "ATAC"
+modalities <- c("RNA", "ATAC")
+integration_states <- c("integrated", "unintegrated")
+plot_colourings <- c("origin", "clusters", "clusters_split")
 
-sobj <- FindTopFeatures(sobj, min.cutoff = 5)
-sobj <- RunTFIDF(sobj)
-sobj <- RunSVD(sobj)
-sobj <- RunHarmony(sobj, group.by.vars = "origin", reduction = "lsi", assay.use = "ATAC", project.dim = F)
-sobj <- RunUMAP(sobj, dims = 2:30, reduction = "harmony")
-
-########################
-#  Save Seurat object  #
-########################
-
-saveRDS(sobj, snakemake@output[["seurat_object"]])
+for (modality in modalities) {
+  for (integration_state in integration_states) {
+    for (plot_colouring in plot_colourings) {
+      print(paste0(
+        "> Plotting ",
+        integration_state,
+        " ",
+        modality,
+        " coloured on ",
+        plot_colouring,
+        ".."
+      ))
+      evil_plot(
+        modality = modality,
+        integration_state = integration_state,
+        plot_colouring = plot_colouring
+      )
+    }
+  }
+}

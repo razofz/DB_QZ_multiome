@@ -110,11 +110,11 @@ sobj <- RunHarmony(
   assay.use = "ATAC",
   project.dim = F,
 )
-sobj@reductions$harmony_RNA <- sobj@reductions$harmony
+sobj@reductions$harmony_ATAC <- sobj@reductions$harmony
 
 sobj <- FindNeighbors(
   sobj,
-  reduction = "harmonyATAC",
+  reduction = "harmony_ATAC",
   dims = 1:30,
   assay = "ATAC",
   graph.name = c("NNharmonyATAC", "SNNharmonyATAC")
@@ -126,7 +126,7 @@ sobj <- FindClusters(
 sobj[["clusters_ATAC_harmony"]] <- Idents(sobj)
 sobj <- RunUMAP(
   sobj,
-  reduction = "harmonyATAC",
+  reduction = "harmony_ATAC",
   dims = 2:30,
   reduction.name = "UMAPharmonyATAC",
   reduction.key = "UMAPharmonyATAC_",

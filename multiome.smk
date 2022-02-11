@@ -27,19 +27,33 @@ rule seurat_processing:
         "src/snakemake/1.2_seurat_processing.R"
 
 
+plot_path = config["output_dir"] + "/plots/"
+
+
 rule plot_integrated:
     input:
         seurat_object=rules.seurat_processing.output.seurat_object,
     conda:
         "envs/seurat_smk_doctored.yaml"
     output:
-        # plot_unintegrated_RNA=config["output_dir"] + "/unintegrated_RNA.svg",
-        # plot_unintegrated_ATAC=config["output_dir"] + "/unintegrated_ATAC.svg",
-        plot_integrated_RNA=config["output_dir"] + "/integrated_RNA.svg",
-        plot_integrated_ATAC=config["output_dir"] + "/integrated_ATAC.svg",
-        plot_integrated_RNA_w_clusters=config["output_dir"]
-        + "/integrated_RNA_w_clusters.svg",
-        plot_integrated_ATAC_w_clusters=config["output_dir"]
-        + "/integrated_ATAC_w_clusters.svg",
+        plot_unintegrated_RNA_origin=plot_path + "unintegrated_RNA_origin.svg",
+        plot_unintegrated_RNA_clusters=plot_path + "unintegrated_RNA_clusters.svg",
+        plot_unintegrated_RNA_clusters_split=plot_path + "unintegrated_RNA_clusters_split.svg",
+        plot_unintegrated_ATAC_origin=plot_path + "unintegrated_ATAC_origin.svg",
+        plot_unintegrated_ATAC_clusters=plot_path + "unintegrated_ATAC_clusters.svg",
+        plot_unintegrated_ATAC_clusters_split=plot_path + "unintegrated_ATAC_clusters_split.svg",
+        plot_integrated_RNA_origin=plot_path + "integrated_RNA_origin.svg",
+        plot_integrated_RNA_clusters=plot_path + "integrated_RNA_clusters.svg",
+        plot_integrated_RNA_clusters_split=plot_path + "integrated_RNA_clusters_split.svg",
+        plot_integrated_ATAC_origin=plot_path + "integrated_ATAC_origin.svg",
+        plot_integrated_ATAC_clusters=plot_path + "integrated_ATAC_clusters.svg",
+        plot_integrated_ATAC_clusters_split=plot_path + "integrated_ATAC_clusters_split.svg",
     script:
         "src/snakemake/1.3_plot_integrated.R"
+
+
+rule gather_plot_integrated:
+    input:
+        in_file=rules.plot_integrated.output,
+    output:
+        out_file=touch(plot_path + ".plot_integrated.done"),
