@@ -97,3 +97,4 @@ target/
 reports/smkreport.html
 *.~lock*
 *.odt
+*.slides.html
