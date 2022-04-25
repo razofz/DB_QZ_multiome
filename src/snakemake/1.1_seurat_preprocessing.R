@@ -21,6 +21,7 @@ seqlevelsStyle(annotation) <- "UCSC"
 sobj[["ATAC"]] <- CreateChromatinAssay(
   counts = data$Peaks,
   sep = c(":", "-"),
+  genome = "mm10",
   fragments = snakemake@input[["fragments_file"]],
   annotation = annotation,
   verbose = F
