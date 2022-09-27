@@ -22,7 +22,7 @@ rule seurat_preprocessing:
     conda:
         "envs/seurat_smk_doctored.yaml"
     script:
-        "src/snakemake/1.1_seurat_preprocessing.R"
+        "src/snakemake/seurat_preprocessing.R"
 
 
 rule seurat_processing:
@@ -33,7 +33,7 @@ rule seurat_processing:
     conda:
         "envs/seurat_smk_doctored.yaml"
     script:
-        "src/snakemake/1.2_seurat_processing.R"
+        "src/snakemake/seurat_processing.R"
 
 
 rule plot_integrated:
@@ -72,7 +72,7 @@ rule add_gene_signatures:
     conda:
         "envs/seurat_smk_doctored.yaml"
     script:
-        "src/snakemake/1.4_add_gene_signatures.R"
+        "src/snakemake/add_gene_signatures.R"
 
 
 rule plot_gene_signatures:
