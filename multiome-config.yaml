@@ -2,10 +2,11 @@
 samples_orig_names:
     immature: "EPCR_LSKs"
     diverse: "Viable"
-raw_dir: "data/raw/aggregate/2021_083_Qinyu_agg/outs"
-output_dir: "data/processed/snakemake"
-report_dir: "reports"
-docs_dir: "docs"
+raw_dir: "data/raw/"
+cellranger_dir: "data/raw/aggregate/2021_083_Qinyu_agg/outs/"
+output_dir: "data/processed/snakemake/"
+report_dir: "reports/"
+docs_dir: "docs/"
 data_owner: "DB_QZ"
 project_name: "DB_QZ_multiome"
 n_threads: 16
