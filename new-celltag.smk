@@ -79,8 +79,8 @@ rule collapsed_matrix_and_filtering:
             f"{config['interim_dir']}/{wildcards.sample}/celltag/bam_obj_pre_collapsing.rds",
         collapsing_result=lambda wildcards:
             f"{config['interim_dir']}/{wildcards.sample}/celltag/collapsing/collapsing_result.txt",
-        whitelist=f"{config['raw_dir']}/barcodes_reverse_complementary.csv",
-        # whitelist=f"src/celltag/BiddyetalWorkflow/whitelist/V3.CellTag.Whitelist.csv"
+        # whitelist=f"{config['raw_dir']}/barcodes_reverse_complementary.csv",
+        whitelist=f"src/celltag/BiddyetalWorkflow/whitelist/V3.CellTag.Whitelist.csv"
     output:
         bam_obj=expand(
             "{output_dir}/{sample}/celltag/bam_obj_post_collapsing.rds",

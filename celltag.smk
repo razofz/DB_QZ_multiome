@@ -24,80 +24,14 @@ rule clone_workflow:
         "git clone https://github.com/morris-lab/BiddyetalWorkflow {output.out_dir}"
 
 
-rule filter_unmapped_reads:
-    input:
-        start_over_marker=".smk_markers/start_over.marker",
-        possorted_bam=lambda wildcards:
-            f"{config['raw_dir']}/count/{config['samples_orig_names'][wildcards.sample]}/outs/gex_possorted_bam.bam",
-    output:
-        filtered_bam=expand(
-            "{output_dir}/{sample}/celltag/filtered_and_possorted_unmapped.bam",
-            output_dir=config["interim_dir"],
-            allow_missing=True,
-        ),
-    shell:
-        "samtools view -b -f 4 -@ 4 {input.possorted_bam} > {output.filtered_bam}"
-
-
-rule filter_GFP:
-    input:
-        start_over_marker=".smk_markers/start_over.marker",
-        possorted_bam=lambda wildcards:
-            f"{config['raw_dir']}/count/{config['samples_orig_names'][wildcards.sample]}/outs/gex_possorted_bam.bam",
-    output:
-        filtered_bam=expand(
-            "{output_dir}/{sample}/celltag/filtered_and_possorted_GFP.bam",
-            output_dir=config["interim_dir"],
-            allow_missing=True,
-        ),
-    shell:
-        "samtools view -b -@ 4 {input.possorted_bam} GFP > {output.filtered_bam}"
-
-
-rule concatenate_filtered:
-    input:
-        unmapped=lambda wildcards:
-            f"{config['interim_dir']}/{wildcards.sample}/celltag/filtered_and_possorted_unmapped.bam",
-        gfp=lambda wildcards:
-            f"{config['interim_dir']}/{wildcards.sample}/celltag/filtered_and_possorted_GFP.bam",
-    output:
-        filtered_bam=expand(
-            "{output_dir}/{sample}/celltag/filtered_and_possorted.bam",
-            output_dir=config["output_dir"],
-            allow_missing=True,
-        ),
-    shell:
-        "cat {input.unmapped} {input.gfp} > {output.filtered_bam}"
-
-
-# rule construct_filtered_bam_index:
-#     input:
-#         filtered_bam=lambda wildcards:
-#             f"{config['output_dir']}/{wildcards.sample}/celltag/filtered_and_possorted.bam",
+## is on bioconda, let's see if it's enough
+## hmm, requires samtools to revert to 1.7 from 1.15...
+## let's just make a new conda environment for that instead.
+# rule clone_starcode:
 #     output:
-#         filtered_bam=expand(
-#             "{output_dir}/{sample}/celltag/filtered_and_possorted.bam.bai",
-#             output_dir=config["output_dir"],
-#             allow_missing=True,
-#         ),
+#         out_dir=directory("src/celltag/starcode")
 #     shell:
-#         "samtools index -@ 0 {input.filtered_bam} {output.filtered_bam}"
-
-
-rule construct_filtered_bam_index:
-    input:
-        filtered_bam=lambda wildcards:
-            f"{config['output_dir']}/{wildcards.sample}/celltag/filtered_and_possorted.bam",
-    output:
-        filtered_bai=expand(
-            "{output_dir}/{sample}/celltag/filtered_and_possorted.bam.bai",
-            output_dir=config["output_dir"],
-            allow_missing=True,
-        ),
-    threads:
-        4  # This value - 1 will be sent to -@
-    wrapper:
-        "v1.3.2/bio/samtools/index"
+#         "git clone https://github.com/gui11aume/starcode {output.out_dir}"
 
 
 rule unzip_10X_barcode_tsv:
@@ -114,12 +48,11 @@ rule unzip_10X_barcode_tsv:
         "gunzip {input.barcodes_10X} --keep --to-stdout > {output.tsv}"
 
 
+####################################
+
+
 rule extract_celltag_reads:
     input:
-        # filtered_bam=lambda wildcards:
-        #     f"{config['output_dir']}/{wildcards.sample}/celltag/filtered_and_possorted.bam",
-        # filtered_bai=lambda wildcards:
-        #     f"{config['output_dir']}/{wildcards.sample}/celltag/filtered_and_possorted.bam.bai",
         possorted_bam=lambda wildcards:
             f"{config['raw_dir']}/count/{wildcards.sample}/outs/gex_possorted_bam.bam",
         barcodes_tsv=lambda wildcards:
@@ -133,34 +66,10 @@ rule extract_celltag_reads:
         ),
     conda:
         "envs/DB_Qinyu-multiome_snakemake_R.yaml"
+    params:
+        n_threads="7"
     shell:
-        "samtools view {input.possorted_bam} | grep -P -f src/celltag/celltagv3-pattern > {output.celltag_reads}"
-
-
-##########################################
-
-
-# rule extract_celltag_reads:
-#     input:
-#         # filtered_bam=lambda wildcards:
-#         #     f"{config['output_dir']}/{wildcards.sample}/celltag/filtered_and_possorted.bam",
-#         # filtered_bai=lambda wildcards:
-#         #     f"{config['output_dir']}/{wildcards.sample}/celltag/filtered_and_possorted.bam.bai",
-#         possorted_bam=lambda wildcards:
-#             f"{config['raw_dir']}/count/{wildcards.sample}/outs/gex_possorted_bam.bam",
-#     output:
-#         celltag_reads=expand(
-#             "{output_dir}/{sample}/celltag/v{CT_version}.celltag.reads.out",
-#             output_dir=config["output_dir"],
-#             CT_version=config["celltag_version"],
-#             allow_missing=True,
-#         ),
-#     conda:
-#         "envs/DB_Qinyu-multiome_snakemake_R.yaml"
-#     shell:
-#         "samtools view {input.possorted_bam} | grep -P -f src/celltagv3-pattern > {output.celltag_reads}"
-
-# GAATTCGATGACAGGCGCAGCTTCCGAGGGATTTGAGATCCAGACATGATAAGATACATTGATGAGTTTGGACAAACCAAAACTAGAATGCAGTGAAAAAAATGCCTTATTTGTGAAATTTGTGATGCTATTGCCTTATTTGTAACCATTATAAGCTGCAATAAACAAGTTAACA
+        "samtools view -@ {params.n_threads} {input.possorted_bam} | grep -P -f src/celltag/celltagv3-pattern > {output.celltag_reads}"
 
 
 rule parse_celltag_reads:

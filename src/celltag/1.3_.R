@@ -17,8 +17,8 @@ bam_obj <- JaccardAnalysis(bam_obj, fast = T)
 # Call clones
 bam_obj <- CloneCalling(celltag.obj = bam_obj, correlation.cutoff = 0.7)
 
-bam_obj@clone.composition[[ct_version]]
-bam_obj@clone.size.info[[ct_version]]
+# bam_obj@clone.composition[[ct_version]]
+# bam_obj@clone.size.info[[ct_version]]
 
 write.csv(
   bam_obj@clone.composition[[ct_version]],

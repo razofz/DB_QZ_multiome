@@ -22,7 +22,7 @@ bam_obj <- CellTagObject(
 # Extract the CellTag information
 bam_obj <- CellTagExtraction(bam_obj, celltag.version = ct_version)
 # Check the bam file result
-print(head(bam_obj@bam.parse.rslt[[ct_version]]))
+# print(head(bam_obj@bam.parse.rslt[[ct_version]]))
 
 # Generate the sparse count matrix
 bam_obj <- CellTagMatrixCount(
