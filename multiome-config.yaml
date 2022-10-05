@@ -5,6 +5,7 @@ samples_orig_names:
 raw_dir: "data/raw/"
 cellranger_dir: "data/raw/aggregate/2021_083_Qinyu_agg/outs/"
 output_dir: "data/processed/snakemake/"
+interim_dir: "data/interim/"
 report_dir: "reports/"
 docs_dir: "docs/"
 data_owner: "DB_QZ"

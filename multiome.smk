@@ -11,6 +11,19 @@ rule all:
     input:
         config["output_dir"] + "seurat_object_with_gene_signatures.rds",
         PLOT_PATH + "is_HSC.svg",
+        PLOT_PATH + "integrated_RNA_origin.svg",
+        # config["output_dir"] + "seurat_object_atac_processed.rds",
+        ".smk/signac_env_non_conda_pkgs_installed.marker",
+        config["interim_dir"] + "clean_annotations.bed",
+
+
+rule clean_annotations:
+    output:
+        annotations_bed=config["interim_dir"] + "clean_annotations.bed"
+    conda:
+        "envs/seurat_smk_doctored.yaml"
+    script:
+        "src/snakemake/clean_annotations.R"
 
 
 rule seurat_preprocessing:
@@ -87,8 +100,24 @@ rule plot_gene_signatures:
         "src/snakemake/visualization/plot_gene_signatures.R"
 
 
-# rule gather_plot_integrated:
-#     input:
-#         in_file=rules.plot_integrated.output,
-#     output:
-#         out_file=touch(PLOT_PATH + ".plot_integrated.done"),
+rule install_signac_environment_packages:
+    output:
+        touch(".smk/signac_env_non_conda_pkgs_installed.marker")
+    conda:
+        "envs/DB_QZ_signac.yaml"
+    script:
+        "src/snakemake/install_signac_environment_packages.R"
+
+
+rule atac_processing:
+    input:
+        seurat_object=rules.add_gene_signatures.output.seurat_object,
+        annotations_bed=rules.clean_annotations.output.annotations_bed,
+    output:
+        seurat_object=config["output_dir"] + "seurat_object_atac_processed.rds",
+    conda:
+        "envs/DB_QZ_signac.yaml"
+    # singularity:
+    #     "docker://razofz/db_qz_signac"
+    script:
+        "src/snakemake/atac_processing.R"

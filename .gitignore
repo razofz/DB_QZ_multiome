@@ -1,5 +1,8 @@
 Rplots.pdf
 
+.conda
+.smk
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
