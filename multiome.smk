@@ -12,14 +12,15 @@ rule all:
         config["output_dir"] + "seurat_object_with_gene_signatures.rds",
         PLOT_PATH + "is_HSC.svg",
         PLOT_PATH + "integrated_RNA_origin.svg",
-        # config["output_dir"] + "seurat_object_atac_processed.rds",
+        config["output_dir"] + "seurat_object_atac_processed.rds",
         ".smk/signac_env_non_conda_pkgs_installed.marker",
         config["interim_dir"] + "clean_annotations.bed",
+        config["output_dir"] + "motif_plots/"
 
 
 rule clean_annotations:
     output:
-        annotations_bed=config["interim_dir"] + "clean_annotations.bed"
+        annotations_bed=config["interim_dir"] + "clean_annotations.bed",
     conda:
         "envs/seurat_smk_doctored.yaml"
     script:
@@ -102,17 +103,25 @@ rule plot_gene_signatures:
 
 rule install_signac_environment_packages:
     output:
-        touch(".smk/signac_env_non_conda_pkgs_installed.marker")
+        touch(".smk/signac_env_non_conda_pkgs_installed.marker"),
     conda:
         "envs/DB_QZ_signac.yaml"
     script:
         "src/snakemake/install_signac_environment_packages.R"
 
 
+rule download_TSS_reference:
+    output:
+        ref=config["external_dir"] + "GREATv4.genes.mm10.tsv",
+    shell:
+        "wget 'https://great-help.atlassian.net/wiki/download/attachments/655445/GREATv4.genes.mm10.tsv?version=1&modificationDate=1627412651079&cacheVersion=1&api=v2' --output-document {output.ref}"
+
+
 rule atac_processing:
     input:
+        rules.install_signac_environment_packages.output,
         seurat_object=rules.add_gene_signatures.output.seurat_object,
-        annotations_bed=rules.clean_annotations.output.annotations_bed,
+        TSS_reference=rules.download_TSS_reference.output.ref,
     output:
         seurat_object=config["output_dir"] + "seurat_object_atac_processed.rds",
     conda:
@@ -121,3 +130,17 @@ rule atac_processing:
     #     "docker://razofz/db_qz_signac"
     script:
         "src/snakemake/atac_processing.R"
+
+
+rule plot_motifs:
+    input:
+        rules.install_signac_environment_packages.output,
+        seurat_object=rules.atac_processing.output.seurat_object,
+    output:
+        plot_dir=directory(config["output_dir"] + "motif_plots/"),
+    conda:
+        "envs/DB_QZ_signac.yaml"
+    # singularity:
+    #     "docker://razofz/db_qz_signac"
+    script:
+        "src/snakemake/visualization/plot_motifs.R"
