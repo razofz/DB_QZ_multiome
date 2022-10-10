@@ -17,6 +17,11 @@ sobj <- CreateSeuratObject(
 sobj[["percent.mt"]] <- PercentageFeatureSet(sobj, pattern = "^MT")
 
 annotation <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79, verbose = F)
+# df <- read.table(snakemake@input[["annotations_bed"]], header = T)
+# annotation <- GRanges(
+#   ranges = IRanges(start = df$starts + 1, end = df$ends), df$seqname,
+#   gene_name = df$gene_name
+# )
 seqlevelsStyle(annotation) <- "UCSC"
 sobj[["ATAC"]] <- CreateChromatinAssay(
   counts = data$Peaks,

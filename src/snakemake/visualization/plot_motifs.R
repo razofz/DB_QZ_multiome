@@ -11,6 +11,9 @@ invisible(sapply(c(
 
 set.seed(snakemake@config[["seed"]])
 
+dir.create(snakemake@output[["plot_dir"]], recursive = TRUE)
+stopifnot(file.exists(snakemake@output[["plot_dir"]]))
+
 ################################################################################
 #                                  Load data                                   #
 ################################################################################
@@ -29,7 +32,7 @@ plot_distal_proximal <- function(assay, motif_idx) {
     "Motif activity score for ", assay, " peaks"
   )
   plot_subtitle <- str_c(
-    "ID: \t\t", motif_ids[motif_idx], "\n",
+    "ID: \t\t\t", motif_ids[motif_idx], "\n",
     "Name: \t", sobj[[assay]]@motifs@motif.names[motif_ids[motif_idx]]
   )
   axis_text_style <- element_text(
@@ -38,7 +41,9 @@ plot_distal_proximal <- function(assay, motif_idx) {
   )
   p <- FeaturePlot(sobj,
     features = str_c(assay, "chromvar_", motif_ids[motif_idx]),
+    reduction = "UMAPharmonyATAC",
     min.cutoff = "q1", max.cutoff = "q99",
+    order = T,
     split.by = NULL
   ) +
     labs(
@@ -69,46 +74,22 @@ plot_distal_proximal <- function(assay, motif_idx) {
 # plot_distal_proximal("proximal", 6) | plot_distal_proximal("distal", 6)
 
 lapply(seq_len(length(motif_ids)), FUN = function(idx) {
+# lapply(seq_len(10), FUN = function(idx) {
   p <- (plot_distal_proximal("proximal", idx) |
-        plot_distal_proximal("distal", idx))
+    plot_distal_proximal("distal", idx))
   ggsave(
     plot = p,
     # filename = str_c("data/adhoc/ATAC/signac-motifs/motif_", idx, ".svg"),
-    filename = str_c(snakemake@output[["plot_dir"]], "/", motif_ids[idx], ".svg"),
+    filename = str_c(
+      snakemake@output[["plot_dir"]], "/",
+      motif_ids[idx], "_",
+      motif_names[idx],
+      ".svg"
+    ),
+    units = "in",
+    width = 11,
+    height = 6,
+    dpi = "retina",
     device = "svg"
   )
 })
-
-
-
-# assay <- "proximal"
-# DefaultAssay(sobj) <- "proximal"
-# plot_title_base <- str_c(
-#   ": ", motif_ids[i], " / ",
-#   sobj[[assay]]@motifs@motif.names[motif_ids[i]]
-# )
-# (
-#   FeaturePlot(obj,
-#     features = str_c("proximalchromvar_", motif_ids[8]),
-#     min.cutoff = "q1", max.cutoff = "q99"
-#   ) +
-#     labs(
-#       title = str_c(
-#         assay, plot_title_base
-#       )
-#     ) +
-#     coord_fixed()
-# ) |
-#   (
-#     FeaturePlot(obj,
-#       features = str_c("distalchromvar_", motif_ids[8]), min.cutoff
-#       = "q1", max.cutoff = "q99"
-#     ) +
-#       labs(
-#         title = str_c(
-#           assay, plot_title_base
-#         )
-#       ) +
-#       coord_fixed()
-#   )
-

@@ -15,7 +15,7 @@ rule all:
         config["output_dir"] + "seurat_object_atac_processed.rds",
         ".smk/signac_env_non_conda_pkgs_installed.marker",
         config["interim_dir"] + "clean_annotations.bed",
-        config["output_dir"] + "motif_plots/"
+        PLOT_PATH + "motif_plots/"
 
 
 rule clean_annotations:
@@ -137,10 +137,38 @@ rule plot_motifs:
         rules.install_signac_environment_packages.output,
         seurat_object=rules.atac_processing.output.seurat_object,
     output:
-        plot_dir=directory(config["output_dir"] + "motif_plots/"),
+        plot_dir=directory(PLOT_PATH + "motif_plots"),
     conda:
         "envs/DB_QZ_signac.yaml"
     # singularity:
     #     "docker://razofz/db_qz_signac"
     script:
         "src/snakemake/visualization/plot_motifs.R"
+
+
+rule plot_motifs_split:
+    input:
+        rules.install_signac_environment_packages.output,
+        seurat_object=rules.atac_processing.output.seurat_object,
+    output:
+        plot_dir=directory(PLOT_PATH + "motif_plots_split"),
+    conda:
+        "envs/DB_QZ_signac.yaml"
+    # singularity:
+    #     "docker://razofz/db_qz_signac"
+    script:
+        "src/snakemake/visualization/plot_motifs_split.R"
+
+
+rule plot_motifs_genesig_groups:
+    input:
+        rules.install_signac_environment_packages.output,
+        seurat_object=rules.atac_processing.output.seurat_object,
+    output:
+        plot_dir=directory(PLOT_PATH + "motif_plots_genesig_groups"),
+    conda:
+        "envs/DB_QZ_signac.yaml"
+    # singularity:
+    #     "docker://razofz/db_qz_signac"
+    script:
+        "src/snakemake/visualization/plot_motifs_genesig_groups.R"
