@@ -15,7 +15,10 @@ rule all:
         config["output_dir"] + "seurat_object_atac_processed.rds",
         ".smk/signac_env_non_conda_pkgs_installed.marker",
         config["interim_dir"] + "clean_annotations.bed",
-        PLOT_PATH + "motif_plots/"
+        PLOT_PATH + "motif_plots/",
+        PLOT_PATH + "motif_plots_split/",
+        PLOT_PATH + "motif_plots_genesig_groups/",
+        PLOT_PATH + "umap_rna_genesig_group.svg",
 
 
 rule clean_annotations:
@@ -165,6 +168,8 @@ rule plot_motifs_genesig_groups:
         rules.install_signac_environment_packages.output,
         seurat_object=rules.atac_processing.output.seurat_object,
     output:
+        plot_umap_atac=PLOT_PATH + "umap_atac_genesig_group.svg",
+        plot_umap_rna=PLOT_PATH + "umap_rna_genesig_group.svg",
         plot_dir=directory(PLOT_PATH + "motif_plots_genesig_groups"),
     conda:
         "envs/DB_QZ_signac.yaml"
