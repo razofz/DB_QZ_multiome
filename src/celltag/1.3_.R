@@ -6,7 +6,7 @@ lapply(list(
 })
 
 set.seed(snakemake@config[["seed"]])
-ct_version <- str_c("v", snakemake@config[["celltag_version"]])
+ct_version <- stringr::str_c("v", snakemake@config[["celltag_version"]])
 
 bam_obj <- readRDS(snakemake@input[["bam_obj"]])
 
