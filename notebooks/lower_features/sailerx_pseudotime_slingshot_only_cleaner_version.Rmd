@@ -1,0 +1,1064 @@
+---
+jupyter:
+  jupytext:
+    formats: ipynb,Rmd
+    text_representation:
+      extension: .Rmd
+      format_name: rmarkdown
+      format_version: '1.2'
+      jupytext_version: 1.14.4
+  kernelspec:
+    display_name: R
+    language: R
+    name: ir
+---
+
+# Pseudotime, cleaner
+
+```{r}
+source("helpers.R")
+source("pseudotime_helpers.R")
+project_path
+```
+
+```{r}
+str_glue("- project_path: {project_path}")
+str_glue("- output_dir: {output_dir}")
+str_glue("- plot_dir: {plot_dir}")
+str_glue("- seed: {seed}")
+```
+
+```{r}
+inputs <- c(
+  "post_SAILERX_rds" = str_glue("{output_dir}seurat_object_post_SAILERX.rds")
+)
+outputs <- c(
+)
+```
+
+```{r}
+"inputs:"
+inputs
+"outputs:"
+outputs
+```
+
+---
+
+
+# Load data
+
+```{r}
+sobj <- readRDS(inputs["post_SAILERX_rds"])
+```
+
+```{r}
+sobj
+```
+
+```{r}
+n_clusters <- (sobj[["sailerx_clusters"]] %>% unique() %>% dim())[1]
+sailerx_colours <- palette.colors(n = n_clusters, palette = "Classic Tableau")
+```
+
+```{r}
+DimPlot(sobj, group.by = "sailerx_clusters", pt.size = 1, cols = sailerx_colours, label = T, label.box = T) + coord_fixed()
+```
+
+## Load Seurat object with motif data etc
+
+```{r}
+old_obj <- readRDS(str_glue("{snakemake_analysis_path}seurat_object_atac_processed.rds"))
+```
+
+```{r}
+old_obj
+```
+
+## Add motif data etc to new object
+
+```{r}
+Cells(sobj) %>% length
+```
+
+```{r}
+(colnames(old_obj) %in% Cells(sobj)) %>% table
+```
+
+```{r}
+old_obj[["keep"]] <- colnames(old_obj) %in% Cells(sobj)
+```
+
+```{r}
+old_obj[[]] %>% head
+```
+
+```{r}
+old_obj <- subset(old_obj, subset = keep == T)
+old_obj
+```
+
+```{r}
+sobj
+```
+
+```{r}
+for (assay in c("proximal", "distal", "proximalChromvar", "distalChromvar")) {
+  sobj[[assay]] <- old_obj[[assay]]
+}
+```
+
+```{r}
+sobj
+```
+
+# Set up end clusters and corresponding info
+
+```{r}
+trajectory_spec <- list(
+  "4" = list(
+    "included_clusters" = c(0, 1, 5, 4)
+    # "included_clusters" = c(0, 1, 5, 4, 2, 3)
+  ),
+  "6" = list(
+    "included_clusters" = c(0, 1, 5, 2, 3, 6)
+  ),
+  "7" = list(
+    "included_clusters" = c(0, 2, 3, 8, 7)
+  ),
+  "8" = list(
+    "included_clusters" = c(0, 2, 3, 8)
+  )
+)
+start_cluster = "0"
+
+trajectory_spec
+start_cluster
+```
+
+# Slingshot
+
+```{r}
+sce_sobj <- sobj %>% as.SingleCellExperiment
+```
+
+```{r}
+sce_sobj
+```
+
+```{r}
+sce_sobj %>% colData() %>% str()
+```
+
+```{r}
+# Need to do conversion to dataframe (or smth else) in order to see contents of DFrame in jupyter, verry annoying
+sce_sobj %>%
+  colData() %>%
+  as.data.frame() %>%
+  head()
+```
+
+```{r tags=c()}
+sce_sobj %>% colData() %>% as_tibble %>% pull("sailerx_clusters")
+```
+
+```{r tags=c()}
+colData(sce_sobj)[["sailerx_clusters"]]
+```
+
+```{r}
+sce_sobj <- sobj %>% as.SingleCellExperiment
+```
+
+## Subsetting for the different trajectories first
+
+```{r}
+sce <- list()
+```
+
+```{r}
+do_sling <- function(sce_sobj = sce_sobj, end_cluster = NULL, start_cluster = start_cluster) {
+  sce <-
+    slingshot(
+      data = sce_sobj,
+      clusterLabels = colData(sce_sobj)[["sailerx_clusters"]], # %>% as.integer,
+      reducedDim = "UMAP_SAILERX",
+      start.clus = start_cluster,
+      end.clus = end_cluster
+    )
+  return(sce)
+}
+```
+
+```{r}
+sce_all <- do_sling(
+  sce_sobj = sce_sobj,
+  start_cluster = start_cluster,
+  end_cluster = names(trajectory_spec)
+)
+
+sce_all
+```
+
+```{r}
+foo <- subset(
+  sce_sobj, ,
+  sailerx_clusters %in% as.integer(trajectory_spec[[end_cluster]][["included_clusters"]])
+)
+```
+
+```{r}
+for (end_cluster in names(trajectory_spec)) {
+# start_cluster = 0
+# for (end_cluster in "4") {
+  print(end_cluster)
+  foo <- subset(
+    sce_sobj, ,
+    sailerx_clusters %in% as.integer(trajectory_spec[[end_cluster]][["included_clusters"]])
+  )
+
+  sce[[end_cluster]] <- do_sling(
+    sce_sobj = foo,
+    start_cluster = start_cluster,
+    end_cluster = end_cluster
+  )
+
+  # print(sce[[end_cluster]])
+}
+```
+
+```{r}
+end_cluster = "4"
+start_cluster = "0"
+foo = subset(
+      sce_sobj, ,
+      sailerx_clusters %in% trajectory_spec[[end_cluster]][["included_clusters"]])
+slingshot(
+  data = foo,
+  # clusterLabels = "sailerx_clusters",
+  clusterLabels = colData(foo)[["sailerx_clusters"]],
+  # clusterLabels = foo %>% colData() %>% as_tibble() %>% pull("sailerx_clusters") %>% as.vector,
+  reducedDim = "UMAP_SAILERX",
+  start.clus = 0,
+  end.clus = 4
+)
+```
+
+```{r}
+sce
+```
+
+```{r}
+sds <- sce[["4"]]
+
+nc <- 2
+pt <- slingPseudotime(sds)
+nms <- colnames(pt)
+nr <- ceiling(length(nms)/nc)
+pal <- viridis(100, end = 0.95)
+par(mfrow = c(nr, nc))
+for (i in nms) {
+  colors <- pal[cut(pt[,i], breaks = 100)]
+  plot(reducedDims(sce_all)$UMAP_SAILERX, pch = 16, col = rgb(red = .6, green = .6, blue = .6, alpha = .7), asp = 1)
+  # plot(reducedDims(sds)$UMAP_SAILERX, pch = 16, main = i, col = rgb(red = .6, green = .6, blue = .6, alpha = .7), asp = 1)
+  points(reducedDims(sds)$UMAP_SAILERX, col = colors, pch = 16, cex = 0.5, asp = 1)
+  lines(SlingshotDataSet(sds), lwd = 2, col = 'black')#, type = 'lineages')
+}
+```
+
+```{r}
+foo <- \(end_cluster) {
+  sds <- sce[[as.character(end_cluster)]]
+
+  nc <- 2
+  pt <- slingPseudotime(sds)
+  nms <- colnames(pt)
+  nr <- ceiling(length(nms) / nc)
+  pal <- viridis(100, end = 0.95)
+  par(mfrow = c(nr, nc))
+  for (i in nms) {
+    colors <- pal[cut(pt[, i], breaks = 100)]
+    plot(reducedDims(sce_all)$UMAP_SAILERX, pch = 16, col = rgb(
+      red = .6, green = .6, blue = .6, alpha = .7
+    ), asp = 1)
+    points(reducedDims(sds)$UMAP_SAILERX,
+      col = colors,
+      pch = 16, cex = 0.5, asp = 1
+    )
+    lines(SlingshotDataSet(sds), lwd = 2, col = "black") # , type = 'lineages')
+  }
+}
+```
+
+```{r}
+foo(4)
+```
+
+```{r}
+foo(6)
+```
+
+```{r}
+foo(7)
+```
+
+Not so nice with the "outliers" to the left, should try to exclude them and redo the trajectory.
+
+```{r}
+foo(8)
+```
+
+```{r}
+nms
+```
+
+```{r}
+pt %>% head
+```
+
+### Redo trajectories for end cluster 7
+
+```{r}
+end_cluster <- 7 %>% as.character
+bar <- subset(
+  sce_sobj, ,
+  sailerx_clusters %in% as.integer(trajectory_spec[[end_cluster]][["included_clusters"]])
+)
+
+cells_to_keep <- bar %>% colnames
+```
+
+```{r}
+# DimPlot(sobj, cells.highlight = cells_to_keep) + coord_fixed()
+p <- DimPlot(sobj, cells = cells_to_keep) + coord_fixed()
+```
+
+```{r}
+options(browser = "firefox")
+cells_to_exclude <- CellSelector(plot = p)
+```
+
+```{r}
+cells_to_exclude %>% length
+cells_to_keep %>% length
+cells_to_keep[! cells_to_keep %in% cells_to_exclude] %>% length
+```
+
+```{r tags=c()}
+cells_to_keep[!cells_to_keep %in% cells_to_exclude] %>%
+  write(file = str_glue("{output_dir}cells_to_keep_for_pt_end_cluster_7.txt"))
+```
+
+```{r}
+bar
+print("")
+bar[, cells_to_keep[! cells_to_keep %in% cells_to_exclude]]
+```
+
+```{r}
+sce[[end_cluster]] <- do_sling(
+  sce_sobj = bar[, cells_to_keep[! cells_to_keep %in% cells_to_exclude]],
+  start_cluster = start_cluster,
+  end_cluster = end_cluster
+)
+```
+
+```{r}
+foo(7)
+```
+
+Better.
+
+
+## Find features correlating with trajectories' pseudotime
+
+```{r tags=c()}
+colData(sce[["5"]])$slingshot
+```
+
+```{r tags=c()}
+colData(sce[["5"]])$slingshot %>% metadata %>% names
+```
+
+```{r}
+stopifnot(
+  all(
+    as.character(4, 6, 7, 8) %in% names(trajectory_spec)
+  )
+)
+traj_dict <- list(
+  "4" = c("lvl1" = "4", "lvl2" = "1"),
+  "6" = c("lvl1" = "6", "lvl2" = "1"),
+  "7" = c("lvl1" = "7", "lvl2" = "1"),
+  "8" = c("lvl1" = "8", "lvl2" = "2")
+)
+traj_dict
+```
+
+```{r}
+pseudotimes_of_interest <- list(
+  "4" = sce[[traj_dict[["4"]][["lvl1"]]]]@colData[[str_c("slingPseudotime_", traj_dict[["4"]][["lvl2"]])]],
+  "6" = sce[[traj_dict[["6"]][["lvl1"]]]]@colData[[str_c("slingPseudotime_", traj_dict[["6"]][["lvl2"]])]],
+  "7" = sce[[traj_dict[["7"]][["lvl1"]]]]@colData[[str_c("slingPseudotime_", traj_dict[["7"]][["lvl2"]])]],
+  "8" = sce[[traj_dict[["8"]][["lvl1"]]]]@colData[[str_c("slingPseudotime_", traj_dict[["8"]][["lvl2"]])]]
+)
+```
+
+```{r tags=c()}
+pseudotimes_of_interest
+```
+
+```{r tags=c()}
+correlations <- list()
+for (end_cluster in names(pseudotimes_of_interest)) {
+  tic(end_cluster)
+  correlations[[end_cluster]] <- mclapply(
+    seq_len(length(VariableFeatures(sobj))),
+    FUN = \(i) {
+      x <- pseudotimes_of_interest[[end_cluster]]
+      y <- sobj[["RNA"]]@data[VariableFeatures(sobj)[i], colnames(sce[[traj_dict[[end_cluster]][["lvl1"]]]])]
+      result <- cor.test(x, y)
+      result$estimate %>% as.numeric %>% return()
+    },
+    mc.cores = 16
+  ) %>% as.numeric
+  toc()
+}
+```
+
+```{r}
+lapply(pseudotimes_of_interest, head)
+```
+
+```{r}
+lapply(lapply(pseudotimes_of_interest, is.na), table)
+```
+
+```{r}
+plot(correlations[["4"]] %>% length %>% seq_len, correlations[["4"]])
+```
+
+```{r}
+lapply(names(pseudotimes_of_interest), FUN = \(i) correlations[[i]] %>% summary)
+```
+
+---
+
+
+# Plot trajectories
+
+
+## Trajectory for end cluster 4
+
+```{r}
+end_cluster <- "4"
+```
+
+```{r}
+slingplot(
+  sce[[traj_dict[[as.character(end_cluster)]][["lvl1"]]]],
+  subset = T,
+  included_clusters = trajectory_spec[[end_cluster]][["included_clusters"]],
+  end_cluster = end_cluster
+)
+```
+
+```{r}
+correlation_plot(end_cluster)
+```
+
+```{r}
+end_cluster <- as.character(end_cluster)
+quantil <- quantile(
+  abs(correlations[[end_cluster]]),
+  probs = quant, na.rm = T
+)
+highest_features <- VariableFeatures(sobj)[which(abs(correlations[[end_cluster]]) > quantil)]
+slingshot_df <- colData(sce[[traj_dict[[end_cluster]][["lvl1"]]]])
+slingshot_df[["slingshot"]] <- NULL
+slingshot_df <- slingshot_df %>% as.data.frame
+```
+
+```{r}
+slingshot_df %>% as.list %>% lapply(., FUN = \(x) class(x))
+```
+
+```{r}
+slingshot_df %>% names
+```
+
+```{r tags=c()}
+correlation_heatmap(end_cluster = end_cluster)
+```
+
+```{r tags=c()}
+correlation_heatmap(end_cluster = end_cluster, slot_to_use = "scale.data", cluster_features = T)
+```
+
+```{r tags=c()}
+correlation_heatmap(end_cluster = end_cluster, slot_to_use = "scale.data", cluster_features = T)
+```
+
+```{r tags=c()}
+correlation_heatmap(end_cluster = end_cluster, slot_to_use = "data", cluster_features = T)
+```
+
+```{r tags=c()}
+correlation_heatmap(end_cluster = 6, slot_to_use = "scale.data", cluster_features = T)
+```
+
+```{r tags=c()}
+correlation_heatmap(end_cluster = 7, slot_to_use = "scale.data", cluster_features = T)
+```
+
+```{r}
+correlation_heatmap(end_cluster = 8, slot_to_use = "scale.data", cluster_features = T)
+```
+
+```{r}
+do_heatmap(features = VariableFeatures(sobj), slingshot_df)
+```
+
+```{r}
+slingshot_df <- as.data.frame(list(
+  "barcodes" = rownames(slingshot_df),
+  "sailerx_clusters" = slingshot_df$sailerx_clusters,
+  "pseudotime" = slingPseudotime(
+    sce[[traj_dict[[end_cluster]][["lvl1"]]]]
+  )[, str_c("Lineage", traj_dict[[end_cluster]][["lvl2"]])]
+  # "pseudotime" = slingshot_df[[str_c("slingPseudotime_",
+  # traj_dict[[end_cluster]][["lvl2"]])]]
+  # "pseudotime" = pseudotimes_of_interest[[end_cluster]]
+)) %>%
+  arrange(pseudotime) %>%
+  drop_na()
+```
+
+```{r}
+subset_matrix <- sobj@assays$RNA@data[VariableFeatures(sobj), slingshot_df$barcodes] %>%
+  as.matrix()
+subset_matrix[1:10,1:6]
+```
+
+```{r}
+sobj@assays$RNA@scale.data[1:10,1:6]
+```
+
+```{r}
+(
+  subset_matrix %>%
+    as.data.frame %>%
+    t
+)[1:10, 1:6]
+```
+
+```{r}
+(
+  subset_matrix
+)[1:10, 1:6]
+```
+
+---
+
+```{r}
+end_cluster <- as.character(4)
+quantil <- quantile(
+  abs(correlations[[end_cluster]]),
+  probs = quant, na.rm = T
+)
+highest_features <- VariableFeatures(sobj)[which(abs(correlations[[end_cluster]]) > quantil)]
+slingshot_df <- colData(sce[[traj_dict[[end_cluster]][["lvl1"]]]])
+slingshot_df[["slingshot"]] <- NULL
+slingshot_df <- slingshot_df %>% as.data.frame
+```
+
+```{r}
+slingshot_df <- as.data.frame(list(
+  "barcodes" = rownames(slingshot_df),
+  "sailerx_clusters" = slingshot_df$sailerx_clusters,
+  "pseudotime" = slingPseudotime(
+    sce[[traj_dict[[end_cluster]][["lvl1"]]]]
+  )[, str_c("Lineage", traj_dict[[end_cluster]][["lvl2"]])]
+  # "pseudotime" = slingshot_df[[str_c("slingPseudotime_",
+  # traj_dict[[end_cluster]][["lvl2"]])]]
+  # "pseudotime" = pseudotimes_of_interest[[end_cluster]]
+)) %>%
+  arrange(pseudotime) %>%
+  drop_na()
+```
+
+```{r}
+subset_matrix <- sobj@assays$RNA@data[VariableFeatures(sobj), slingshot_df$barcodes] %>%
+  as.matrix()
+subset_matrix[1:10,1:6]
+```
+
+```{r tags=c()}
+saved_rownames <- rownames(subset_matrix)
+relative_matrix <- (
+  subset_matrix %>%
+    as_tibble %>%
+    rowwise %>%
+    mutate(total = sum(c_across(1:dim(.)[[2]]))) %>%
+    ungroup() %>% 
+    mutate(across(1:dim(.)[[2]], ~ . / total)) %>%
+    dplyr::select(-total) %>%
+    as.matrix
+)#[1:10, 1:6]
+rownames(relative_matrix) <- saved_rownames
+relative_matrix[1:10, 1:6]
+```
+
+```{r}
+source("pseudotime_helpers.R")
+```
+
+```{r}
+correlation_heatmap(end_cluster = 4, supplied_data = relative_matrix, cluster_features = F)
+```
+
+```{r tags=c()}
+correlation_heatmap(end_cluster = end_cluster, slot_to_use = "scale.data", cluster_features = F)
+```
+
+Well, the relative expression approach did not look better than with the scaled data. It looks similar though, so it was a good corroboration.
+
+
+---
+
+```{r}
+slot(sobj@assays$RNA, "scale.data")[7,] %>% hist()
+```
+
+```{r}
+relative_matrix[7,1:(dim(relative_matrix)[[2]]-1)] %>% as.numeric %>% hist()
+```
+
+```{r}
+slot(sobj@assays$RNA, "data")[2,] %>% table
+```
+
+```{r}
+slot(sobj@assays$RNA, "scale.data")["St18",] %>% hist()
+```
+
+```{r}
+DimPlot(sobj,
+  cells.highlight = slot(sobj@assays$RNA, "scale.data")["Rp1", ][slot(sobj@assays$RNA, "scale.data")["Rp1", ] > 1] %>% names()
+) + coord_fixed()
+```
+
+```{r}
+quant <- .995
+quantil <- quantile(
+  abs(correlations[[as.character(end_cluster)]]),
+  probs = quant, na.rm = T
+)
+highest_features <- VariableFeatures(sobj)[which(abs(correlations[[as.character(end_cluster)]]) > quantil)]
+```
+
+```{r}
+FeaturePlot(sobj, reduction = "UMAP_SAILERX", features = highest_features[1:4], coord.fixed = T)
+```
+
+```{r}
+FeaturePlot(sobj, reduction = "UMAP_SAILERX", features = highest_features[5:8], coord.fixed = T)
+```
+
+## Trajectory for end cluster 6
+
+```{r}
+end_cluster <- "6"
+```
+
+```{r}
+slingplot(
+  sce[[traj_dict[[as.character(end_cluster)]][["lvl1"]]]],
+  subset = T,
+  included_clusters = trajectory_spec[[end_cluster]][["included_clusters"]],
+  end_cluster = end_cluster
+)
+```
+
+```{r}
+correlation_plot(end_cluster)
+```
+
+```{r tags=c()}
+correlation_heatmap(end_cluster = end_cluster, slot_to_use = "scale.data", cluster_features = T)
+```
+
+```{r}
+quant <- .995
+quantil <- quantile(
+  abs(correlations[[as.character(end_cluster)]]),
+  probs = quant, na.rm = T
+)
+highest_features <- VariableFeatures(sobj)[which(abs(correlations[[as.character(end_cluster)]]) > quantil)]
+```
+
+```{r}
+FeaturePlot(sobj, reduction = "UMAP_SAILERX", features = highest_features[1:4], coord.fixed = T)
+```
+
+```{r}
+FeaturePlot(sobj, reduction = "UMAP_SAILERX", features = highest_features[5:8], coord.fixed = T)
+```
+
+## Trajectory for end cluster 7
+
+```{r}
+end_cluster <- "7"
+```
+
+```{r}
+slingplot(
+  sce[[traj_dict[[as.character(end_cluster)]][["lvl1"]]]],
+  subset = T,
+  included_clusters = trajectory_spec[[end_cluster]][["included_clusters"]],
+  end_cluster = end_cluster
+)
+```
+
+```{r}
+correlation_plot(end_cluster)
+```
+
+```{r tags=c()}
+correlation_heatmap(end_cluster = end_cluster, slot_to_use = "scale.data", cluster_features = T)
+```
+
+```{r}
+quant <- .995
+quantil <- quantile(
+  abs(correlations[[as.character(end_cluster)]]),
+  probs = quant, na.rm = T
+)
+highest_features <- VariableFeatures(sobj)[which(abs(correlations[[as.character(end_cluster)]]) > quantil)]
+```
+
+```{r}
+FeaturePlot(sobj, reduction = "UMAP_SAILERX", features = highest_features[1:4], coord.fixed = T)
+```
+
+```{r}
+FeaturePlot(sobj, reduction = "UMAP_SAILERX", features = highest_features[5:8], coord.fixed = T)
+```
+
+## Trajectory for end cluster 8
+
+```{r}
+end_cluster <- "8"
+```
+
+```{r}
+slingplot(
+  sce[[traj_dict[[as.character(end_cluster)]][["lvl1"]]]],
+  subset = T,
+  included_clusters = trajectory_spec[[end_cluster]][["included_clusters"]],
+  end_cluster = end_cluster
+)
+```
+
+```{r}
+correlation_plot(end_cluster)
+```
+
+```{r tags=c()}
+correlation_heatmap(end_cluster = end_cluster, slot_to_use = "scale.data", cluster_features = T)
+```
+
+```{r}
+quant <- .995
+quantil <- quantile(
+  abs(correlations[[as.character(end_cluster)]]),
+  probs = quant, na.rm = T
+)
+highest_features <- VariableFeatures(sobj)[which(abs(correlations[[as.character(end_cluster)]]) > quantil)]
+```
+
+```{r}
+FeaturePlot(sobj, reduction = "UMAP_SAILERX", features = highest_features[1:4], coord.fixed = T)
+```
+
+```{r}
+FeaturePlot(sobj, reduction = "UMAP_SAILERX", features = highest_features[5:8], coord.fixed = T)
+```
+
+---
+
+
+# Save plots and data
+
+```{r}
+for (end_cluster in names(trajectory_spec)) {
+  svg(filename = str_glue("{plot_dir}{end_cluster}_pt_umap.svg"), width = 7, height = 7)
+  slingplot(
+    sce[[traj_dict[[as.character(end_cluster)]][["lvl1"]]]],
+    subset = T,
+    included_clusters = trajectory_spec[[end_cluster]][["included_clusters"]],
+    end_cluster = end_cluster
+  )
+  dev.off()
+  svg(filename = str_glue("{plot_dir}{end_cluster}_pt_corr_scatter.svg"), width = 7, height = 7)
+  correlation_plot(end_cluster)
+  dev.off()
+  svg(filename = str_glue("{plot_dir}{end_cluster}_pt_corr_heatmap.svg"), width = 11, height = 8)
+  correlation_heatmap(end_cluster = end_cluster, slot_to_use = "scale.data", cluster_features = T)
+  dev.off()
+  quant <- .995
+  quantil <- quantile(
+    abs(correlations[[as.character(end_cluster)]]),
+    probs = quant, na.rm = T
+  )
+  highest_features <- VariableFeatures(sobj)[which(abs(correlations[[as.character(end_cluster)]]) > quantil)]
+  svg(filename = str_glue("{plot_dir}{end_cluster}_pt_corr_featureplot_top1-4.svg"), width = 7, height = 7)
+  FeaturePlot(sobj, reduction = "UMAP_SAILERX", features = highest_features[1:4], coord.fixed = T)
+  dev.off()
+  svg(filename = str_glue("{plot_dir}{end_cluster}_pt_corr_featureplot_top5-8.svg"), width = 7, height = 7)
+  FeaturePlot(sobj, reduction = "UMAP_SAILERX", features = highest_features[5:8], coord.fixed = T)
+  dev.off()
+}
+```
+
+```{r}
+for (end_cluster in names(trajectory_spec)) {
+  svg(filename = str_glue("{plot_dir}{end_cluster}_pt_umap.svg"), width = 7, height = 7)
+  slingplot(
+    sce[[traj_dict[[as.character(end_cluster)]][["lvl1"]]]],
+    subset = T,
+    included_clusters = trajectory_spec[[end_cluster]][["included_clusters"]],
+    end_cluster = end_cluster
+  )
+  dev.off()
+}
+```
+
+```{r}
+for (end_cluster in names(trajectory_spec)) {
+  svg(filename = str_glue("{plot_dir}{end_cluster}_pt_corr_scatter.svg"), width = 7, height = 7)
+  correlation_plot(end_cluster) %>% show
+  dev.off()
+}
+```
+
+```{r}
+for (end_cluster in names(trajectory_spec)) {
+  svg(filename = str_glue("{plot_dir}{end_cluster}_pt_corr_heatmap.svg"), width = 7, height = 9)
+  correlation_heatmap(end_cluster = end_cluster, slot_to_use = "scale.data", cluster_features = T) %>%
+    show()
+  dev.off()
+}
+```
+
+```{r}
+for (end_cluster in names(trajectory_spec)) {
+  quant <- .995
+  quantil <- quantile(
+    abs(correlations[[as.character(end_cluster)]]),
+    probs = quant, na.rm = T
+  )
+  highest_features <- VariableFeatures(sobj)[which(abs(correlations[[as.character(end_cluster)]]) > quantil)]
+  svg(filename = str_glue("{plot_dir}{end_cluster}_pt_corr_featureplot_top1-4.svg"), width = 9, height = 9)
+  FeaturePlot(sobj, reduction = "UMAP_SAILERX", features = highest_features[1:4], coord.fixed = T) %>%
+    show
+  dev.off()
+  svg(filename = str_glue("{plot_dir}{end_cluster}_pt_corr_featureplot_top5-8.svg"), width = 9, height = 9)
+  FeaturePlot(sobj, reduction = "UMAP_SAILERX", features = highest_features[5:8], coord.fixed = T) %>%
+    show
+  dev.off()
+}
+```
+
+---
+
+
+# Misc.
+
+```{r}
+FeaturePlot(sobj, reduction = "UMAP_SAILERX", features = "Atp8b4")
+```
+
+```{r}
+cluster_annotation <- c(
+  "0" = "Diff path to neutrophils",
+  "1" = "HSCs",
+  "2" = "Diff path to neutrophils",
+  "3" = "Mixture",
+  "4" = "Cycling HSCs",
+  "5" = "Basophils",
+  "6" = "Diff path to neutrophils",
+  "7" = "Macrophage",
+  "8" = "Cycling HPCs",
+  "9" = "Megakaryocytes / platelets"
+)
+```
+
+```{r}
+cluster_annotation
+```
+
+```{r}
+bar <- Vectorize(\(cl) cluster_annotation[[cl]])
+sobj@meta.data <- sobj[[]] %>% mutate("annotation" = bar(sailerx_clusters))
+```
+
+```{r}
+DimPlot(sobj, reduction = "UMAP_SAILERX", group.by = "annotation", label = T, label.box = T, repel = T, label.size = 3) + coord_fixed()
+```
+
+## New for end cluster 4
+
+```{r}
+do_sling <- function(sce_sobj = sce_sobj, end_cluster = NULL, start_cluster = start_cluster) {
+  sce <-
+    slingshot(
+      data = sce_sobj,
+      clusterLabels = colData(sce_sobj)[["sailerx_clusters"]], # %>% as.integer,
+      reducedDim = "UMAP_SAILERX",
+      start.clus = start_cluster,
+      end.clus = end_cluster
+    )
+  return(sce)
+}
+```
+
+```{r}
+foo <- subset(
+  sce_sobj, ,
+  sailerx_clusters %in% as.integer(trajectory_spec[[end_cluster]][["included_clusters"]])
+)
+```
+
+```{r}
+end_cluster <- 4
+barfoo <- subset(
+  sce_sobj, ,
+  sailerx_clusters %in% c(0, 2, 3, 1, 5, 4) 
+)
+
+foobar <- do_sling(
+  sce_sobj = barfoo,
+  start_cluster = 0,
+  end_cluster = end_cluster
+)
+```
+
+```{r}
+sds <- foobar
+nc <- 2
+pt <- slingPseudotime(sds)
+nms <- colnames(pt)
+nr <- ceiling(length(nms) / nc)
+pal <- viridis(100, end = 0.95)
+par(mfrow = c(nr, nc))
+for (i in nms) {
+  colors <- pal[cut(pt[, i], breaks = 100)]
+  plot(reducedDims(sce_all)$UMAP_SAILERX, pch = 16, col = rgb(
+    red = .6, green = .6, blue = .6, alpha = .7
+  ), asp = 1)
+  points(reducedDims(sds)$UMAP_SAILERX,
+    col = colors,
+    pch = 16, cex = 0.5, asp = 1
+  )
+  lines(SlingshotDataSet(sds), lwd = 2, col = "black") # , type = 'lineages')
+}
+```
+
+```{r}
+pseudotimes_of_interest_4b <- list("4" = foobar@colData[[str_c("slingPseudotime_", 1)]])
+```
+
+```{r tags=c()}
+correlations_4b <- list()
+for (end_cluster in c(4)) {
+  tic(end_cluster)
+  correlations_4b[[end_cluster %>% as.character]] <- mclapply(
+    seq_len(length(VariableFeatures(sobj))),
+    FUN = \(i) {
+      x <- pseudotimes_of_interest_4b[[end_cluster %>% as.character]]
+      y <- sobj[["RNA"]]@data[VariableFeatures(sobj)[i], colnames(foobar)]
+      result <- cor.test(x, y)
+      result$estimate %>% as.numeric %>% return()
+    },
+    mc.cores = 16
+  ) %>% as.numeric
+  toc()
+}
+```
+
+```{r}
+for (end_cluster in c(4)) {
+  svg(filename = str_glue("{plot_dir}{end_cluster}b_pt_umap.svg"), width = 7, height = 7)
+  slingplot(
+    foobar,
+    subset = T,
+    included_clusters = 0:5,
+    end_cluster = end_cluster
+  )
+  dev.off()
+
+  # svg(filename = str_glue("{plot_dir}{end_cluster}b_pt_corr_scatter.svg"), width = 7, height = 7)
+  # correlation_plot(end_cluster) %>% show
+  # dev.off()
+
+  svg(filename = str_glue("{plot_dir}{end_cluster}b_pt_corr_heatmap.svg"), width = 7, height = 9)
+  # correlation_heatmap(end_cluster = end_cluster, slot_to_use = "scale.data", cluster_features = T) %>%
+  #   show()
+
+  quant <- .98
+  slot_to_use <- "scale.data"
+  cluster_features <- T
+  supplied_data <- NULL
+  # end_cluster <- as.character(end_cluster)
+  quantil <- quantile(
+    abs(correlations_4b[[as.character(end_cluster)]]),
+    probs = quant, na.rm = T
+  )
+  highest_features <-
+    VariableFeatures(sobj)[which(abs(correlations_4b[[as.character(end_cluster)]]) > quantil)]
+  slingshot_df <- colData(foobar)
+  slingshot_df[["slingshot"]] <- NULL
+  slingshot_df <- slingshot_df %>% as.data.frame()
+  slingshot_df <- as.data.frame(list(
+    "barcodes" = rownames(slingshot_df),
+    "sailerx_clusters" = slingshot_df$sailerx_clusters,
+    "pseudotime" = slingPseudotime(
+      foobar
+    )[, str_c("Lineage", 1)]
+    # "pseudotime" = slingshot_df[[str_c("slingPseudotime_",
+    # traj_dict[[end_cluster]][["lvl2"]])]]
+    # "pseudotime" = pseudotimes_of_interest[[end_cluster]]
+  )) %>%
+    arrange(pseudotime) %>%
+    drop_na()
+  (do_heatmap(highest_features,
+    slingshot_df = slingshot_df,
+    slot_to_use = slot_to_use,
+    cluster_features = cluster_features,
+    supplied_data = supplied_data
+  ) +
+    labs(caption = end_cluster)
+  ) %>%
+    show()
+
+  dev.off()
+
+  quant <- .995
+  quantil <- quantile(
+    abs(correlations_4b[[as.character(end_cluster)]]),
+    probs = quant, na.rm = T
+  )
+  highest_features <- VariableFeatures(sobj)[which(abs(correlations_4b[[as.character(end_cluster)]]) > quantil)]
+
+  svg(filename = str_glue("{plot_dir}{end_cluster}b_pt_corr_featureplot_top1-4.svg"), width = 9, height = 9)
+  FeaturePlot(sobj, reduction = "UMAP_SAILERX", features = highest_features[1:4], coord.fixed = T) %>%
+    show()
+  dev.off()
+
+  svg(filename = str_glue("{plot_dir}{end_cluster}b_pt_corr_featureplot_top5-8.svg"), width = 9, height = 9)
+  FeaturePlot(sobj, reduction = "UMAP_SAILERX", features = highest_features[5:8], coord.fixed = T) %>%
+    show()
+  dev.off()
+}
+```
