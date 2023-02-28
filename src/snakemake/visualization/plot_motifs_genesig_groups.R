@@ -353,26 +353,3 @@ for (idx in seq_len(n_iter)) {
     pb$tick()
   }
 }
-
-# # lapply(seq_len(length(motif_ids)), FUN = function(idx) {
-# sink <- lapply(seq_len(5), FUN = function(idx) {
-#   for (modality in c("ATAC", "RNA")) {
-#     p <- compile_genesig_motif(idx, umap = modality)
-#     ggsave(
-#       plot = p,
-#       filename = str_c(
-#         snakemake@output[["plot_dir"]], "/",
-#         motif_ids[idx], "_",
-#         motif_names[idx],
-#         "_",
-#         modality,
-#         ".svg"
-#       ),
-#       units = "in",
-#       width = 10,
-#       height = 6,
-#       dpi = "retina",
-#       device = "svg"
-#     )
-#   }
-# })

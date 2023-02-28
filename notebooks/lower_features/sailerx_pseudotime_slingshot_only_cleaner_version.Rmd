@@ -966,6 +966,92 @@ for (i in nms) {
 ```
 
 ```{r}
+SlingshotDataSet(sds)
+```
+
+```{r}
+SlingshotDataSet(sds) %>% slotNames
+```
+
+```{r tags=c()}
+SlingshotDataSet(sds) %>% slot("curves")
+```
+
+```{r}
+getCurves(SlingshotDataSet(sds))
+```
+
+```{r}
+getCurves(SlingshotDataSet(sds))@metadata$curves$Lineage1$s %>%
+as.data.frame %>%
+plot
+  # ggplot() +
+  #   geom_point(
+  #       x = "UMAPSAILERX_1",
+  #       y = "UMAPSAILERX_2"
+  #   )
+  
+```
+
+```{r}
+(
+    sce[["7"]] %>%
+SlingshotDataSet %>% 
+slot("curves")
+)$Lineage1$s %>% 
+plot
+```
+
+```{r}
+(
+    sce[["6"]] %>%
+SlingshotDataSet %>% 
+getCurves
+)@metadata$curves$Lineage1$s %>% 
+plot
+```
+
+```{r}
+(
+    sce[["8"]] %>%
+SlingshotDataSet %>% 
+getCurves
+)@metadata$curves$Lineage2$s %>% 
+plot
+```
+
+```{r}
+df <- getCurves(SlingshotDataSet(sds))@metadata$curves$Lineage1$s %>%
+  as.data.frame()
+names(df) <- c("xend", "yend")
+df <- df %>% as_tibble
+df %>% dim
+df %>% head
+```
+
+```{r}
+df2 <- df %>% as_tibble %>% add_row(.before = 1)
+df <- df %>% as_tibble %>% add_row()
+names(df2) <- c("x", "y")
+df2 %>% head
+```
+
+```{r}
+data_lines <- data.frame(
+  x = df2$x,
+  y = df2$y,
+  xend = df$xend,
+  yend = df$yend
+) %>% as_tibble
+data_lines %>% dim
+data_lines %>% drop_na %>% dim
+```
+
+```{r}
+FeaturePlot(sobj, features = "F13a1", coord.fixed = T) + geom_segment(data = data_lines, aes(x = x, y = y, xend = xend, yend = yend))
+```
+
+```{r}
 pseudotimes_of_interest_4b <- list("4" = foobar@colData[[str_c("slingPseudotime_", 1)]])
 ```
 
@@ -1061,4 +1147,199 @@ for (end_cluster in c(4)) {
     show()
   dev.off()
 }
+```
+
+---
+
+## One plot to rule them all
+
+```{r}
+defining_genes <- c("Mfsd2b", "Mecom", "Ngp", "F13a1", "Cd200r3") %>% str_to_title
+stopifnot(all(defining_genes %in% rownames(sobj[["RNA"]])))
+```
+
+```{r}
+FeaturePlot(sobj, features = defining_genes, coord.fixed = T)
+```
+
+```{r}
+FeaturePlot(sobj, features = defining_genes, coord.fixed = T, order = T)
+```
+
+```{r}
+FeaturePlot(sobj, features = c("Mecom", "Ngp"), coord.fixed = T, blend = T, combine = F, pt.size = 2, order = T)[[3]]
+```
+
+---
+
+## Cell Cycle plot
+
+```{r}
+sobj <- CellCycleScoring(
+  sobj,
+  g2m.features = cc.genes$g2m.genes %>% str_to_title(),
+  s.features = cc.genes$s.genes %>% str_to_title()
+)
+```
+
+```{r}
+sobj[[]] %>% head
+```
+
+```{r}
+library(RColorBrewer)
+display.brewer.all(colorblindFriendly = T)
+```
+
+```{r}
+brewer.pal(8, "Dark2")
+```
+
+```{r}
+p <- DimPlot(sobj, group.by = "Phase", pt.size = 1, shuffle = T, cols = c("gray70", "orangered3", "royalblue4")) + coord_fixed()
+p
+```
+
+```{r}
+ggsave(plot = p, filename = str_c(plot_dir, "umap_cc_phase.svg"), device = "svg", units = "in", width = 7, height = 7)
+```
+
+---
+
+## Export lineage curves for grand umap
+
+```{r}
+(
+    sce[["6"]] %>%
+SlingshotDataSet %>% 
+getCurves
+)@metadata$curves$Lineage1$s %>% 
+plot
+```
+
+```{r}
+traj_lineages <- list()
+for (trajectory in names(traj_dict)) {
+  if (trajectory == "4") {
+    struct_to_use <- sds
+  } else {
+    struct_to_use <- sce[[trajectory]]
+  }
+  lineage_nbr <- traj_dict[[trajectory]][["lvl2"]]
+    
+  df <- SlingshotDataSet(struct_to_use)@curves[[str_c("Lineage", lineage_nbr)]]$s %>% as.data.frame()
+  # df <- getCurves(SlingshotDataSet(struct_to_use))@metadata$curves[[str_c("Lineage", lineage_nbr)]]$s %>% as.data.frame()
+  # (sce[["8"]] %>% SlingshotDataSet)@curves
+  names(df) <- c("xend", "yend")
+  df <- df %>% as_tibble()
+    
+  df2 <- df %>%
+    as_tibble() %>%
+    add_row(.before = 1)
+  df <- df %>%
+    as_tibble() %>%
+    add_row()
+  names(df2) <- c("x", "y")
+    
+  data_lines <- data.frame(
+    x = df2$x,
+    y = df2$y,
+    xend = df$xend,
+    yend = df$yend
+  ) %>% as_tibble()
+  data_lines <- data_lines %>%
+    drop_na()
+  traj_lineages[[trajectory]] <- data_lines
+}
+```
+
+```{r}
+lapply(traj_lineages, head)
+```
+
+```{r}
+library(rjson)
+```
+
+```{r}
+write(toJSON(traj_lineages), file = str_c(output_dir, "trajectory_lineages.json"))
+```
+
+```{r tags=c()}
+getCurves(SlingshotDataSet(struct_to_use))@metadata$curves#[[
+  #   str_c("Lineage", lineage_nbr)
+  # ]]$s
+```
+
+```{r}
+df2 <- df %>% as_tibble %>% add_row(.before = 1)
+df <- df %>% as_tibble %>% add_row()
+names(df2) <- c("x", "y")
+df2 %>% head
+```
+
+```{r}
+data_lines <- data.frame(
+  x = df2$x,
+  y = df2$y,
+  xend = df$xend,
+  yend = df$yend
+) %>% as_tibble
+data_lines %>% dim
+data_lines %>% drop_na %>% dim
+```
+
+```{r}
+FeaturePlot(sobj, features = "F13a1", coord.fixed = T) + geom_segment(data = data_lines, aes(x = x, y = y, xend = xend, yend = yend))
+```
+
+```{r}
+FeaturePlot(sobj, features = "Mfsd2b", coord.fixed = T) + geom_segment(data = traj_lineages[["8"]], aes(x = x, y = y, xend = xend, yend = yend))
+```
+
+```{r}
+df <- getCurves(SlingshotDataSet(struct_to_use))@metadata$curves[[str_c("Lineage", "1")]]$s %>% as.data.frame()
+names(df) <- c("xend", "yend")
+df <- df %>% as_tibble()
+df %>% head
+```
+
+```{r}
+df <- getCurves(SlingshotDataSet(struct_to_use))@metadata$curves[[str_c("Lineage", "2")]]$s %>% as.data.frame()
+names(df) <- c("xend", "yend")
+df <- df %>% as_tibble()
+df %>% head
+```
+
+```{r}
+getCurves(SlingshotDataSet(struct_to_use))
+```
+
+```{r}
+end_cluster <- "8"
+```
+
+```{r}
+slingplot
+#   sce[[traj_dict[[as.character(end_cluster)]][["lvl1"]]]],
+#   subset = T,
+#   included_clusters = trajectory_spec[[end_cluster]][["included_clusters"]],
+#   end_cluster = end_cluster
+# )
+```
+
+```{r}
+do_sling
+```
+
+```{r}
+foo("8")
+```
+
+```{r}
+(sce[["8"]] %>% SlingshotDataSet)@curves
+```
+
+```{r}
+getCurves(SlingshotDataSet(struct_to_use))@metadata
 ```

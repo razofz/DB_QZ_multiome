@@ -1,0 +1,11 @@
+linters: linters_with_defaults(
+    line_length_linter(80), 
+    commented_code_linter = NULL,
+    duplicate_argument_linter(),
+    inner_combine_linter(),
+    object_name_linter(styles = c('symbols', 'snake_case', 'SNAKE_CASE')),
+    undesirable_function_linter(),
+    unreachable_code_linter(),
+    object_usage_linter = NULL,
+    T_and_F_symbol_linter = NULL
+  )
