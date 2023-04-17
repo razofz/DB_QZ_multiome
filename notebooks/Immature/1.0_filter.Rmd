@@ -1,0 +1,280 @@
+---
+jupyter:
+  jupytext:
+    formats: ipynb,Rmd
+    text_representation:
+      extension: .Rmd
+      format_name: rmarkdown
+      format_version: '1.2'
+      jupytext_version: 1.14.4
+  kernelspec:
+    display_name: R
+    language: R
+    name: ir
+---
+
+# Setup
+
+```{r}
+source("helpers.R")
+```
+
+```{r}
+str_glue("- project_path: {project_path}")
+str_glue("- output_dir: {output_dir}")
+str_glue("- plot_dir: {plot_dir}")
+str_glue("- rds_path: {rds_path}")
+str_glue("- raw_dir: {raw_dir}")
+str_glue("- h5_path: {h5_path}")
+str_glue("- fragments_path: {fragments_path}")
+str_glue("- seed: {seed}")
+```
+
+# Load data
+
+```{r}
+h5 <- Read10X_h5(h5_path)
+```
+
+```{r}
+h5 %>% names
+```
+
+```{r}
+sobj <- CreateSeuratObject(
+  counts = h5$`Gene Expression`,
+  assay = "RNA"
+)
+```
+
+```{r}
+sobj
+```
+
+```{r}
+sobj[["percent.mt"]] <- PercentageFeatureSet(sobj, pattern = "^MT")
+```
+
+```{r tags=c()}
+annotation <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79, verbose = F)
+seqlevelsStyle(annotation) <- "UCSC"
+```
+
+```{r}
+sobj[["ATAC"]] <- CreateChromatinAssay(
+  counts = h5$Peaks,
+  sep = c(":", "-"),
+  genome = "mm10",
+  fragments = fragments_path,
+  annotation = annotation,
+  verbose = F
+)
+```
+
+```{r}
+DefaultAssay(sobj) <- "ATAC"
+genome(sobj) <- "mm10"
+```
+
+```{r}
+sobj <- NucleosomeSignal(sobj)
+```
+
+```{r}
+sobj <- TSSEnrichment(sobj)
+```
+
+# Subset to only Immature cells
+
+```{r}
+immature_cells <- (sobj[[]] %>% rownames())[sobj[[]] %>%
+  rownames() %>%
+  str_sub(start = -1) %>%
+  str_detect("2") %>%
+  which()]
+immature_cells %>% length()
+```
+
+```{r}
+sobj <- sobj %>% subset(cells = immature_cells)
+```
+
+# Find thresholds for feature filtering
+
+```{r}
+features <- c(
+  "nCount_ATAC",
+  "nFeature_ATAC",
+  "nCount_RNA",
+  "nFeature_RNA",
+  "nucleosome_signal",
+  "TSS.enrichment"
+)
+
+thresholds <- c()
+
+for (i in seq_len(length(features))) {
+  thresholds[[features[i]]] <- c("low" = 0, "high" = Inf)
+}
+thresholds
+```
+
+## Plotting functions
+
+```{r}
+plot_vln <- \(plot) plot + NoLegend() + theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank())
+plot_lines <- \(plot, feat) (plot + geom_hline(yintercept = thresholds[[feat]][["high"]], linetype = "dashed") + geom_hline(yintercept = thresholds[[feat]][["low"]], linetype = "dashed")) %>% plot_vln
+```
+
+## First feature to filter:
+
+```{r}
+feat <- features[1]
+VlnPlot(sobj, features = feat) %>% plot_vln %>% show()
+VlnPlot(sobj, features = feat, log = T) %>% plot_vln %>% show()
+```
+
+```{r}
+thresholds[[feat]][["low"]] <- 1e3
+thresholds[[feat]][["high"]] <- 5e4
+```
+
+```{r}
+VlnPlot(sobj, features = feat) %>% plot_lines(feat) %>% show()
+VlnPlot(sobj, features = feat, log = T) %>% plot_lines(feat) %>% show()
+```
+
+## Next feature (2) to filter:
+
+```{r}
+feat <- features[2]
+VlnPlot(sobj, features = feat) %>% plot_vln %>% show()
+VlnPlot(sobj, features = feat, log = T) %>% plot_vln %>% show()
+```
+
+```{r}
+thresholds[[feat]][["low"]] <- .8e3
+thresholds[[feat]][["high"]] <- 20e3
+```
+
+```{r}
+VlnPlot(sobj, features = feat) %>% plot_lines(feat) %>% show()
+VlnPlot(sobj, features = feat, log = T) %>% plot_lines(feat) %>% show()
+```
+
+## Next feature (3) to filter:
+
+```{r}
+feat <- features[3]
+VlnPlot(sobj, features = feat) %>% plot_vln %>% show()
+VlnPlot(sobj, features = feat, log = T) %>% plot_vln %>% show()
+```
+
+```{r}
+thresholds[[feat]][["high"]] <- 18e3
+thresholds[[feat]][["low"]] <- 1e3
+```
+
+```{r}
+VlnPlot(sobj, features = feat) %>% plot_lines(feat) %>% show()
+VlnPlot(sobj, features = feat, log = T) %>% plot_lines(feat) %>% show()
+```
+
+## Next feature (4) to filter:
+
+```{r}
+feat <- features[4]
+VlnPlot(sobj, features = feat) %>% plot_vln %>% show()
+VlnPlot(sobj, features = feat, log = T) %>% plot_vln %>% show()
+```
+
+```{r}
+thresholds[[feat]][["high"]] <- 5e3
+thresholds[[feat]][["low"]] <- .8e3
+```
+
+```{r}
+VlnPlot(sobj, features = feat) %>% plot_lines(feat) %>% show()
+VlnPlot(sobj, features = feat, log = T) %>% plot_lines(feat) %>% show()
+```
+
+## Next feature (5) to filter:
+
+```{r}
+feat <- features[5]
+VlnPlot(sobj, features = feat) %>% plot_vln %>% show()
+```
+
+```{r}
+thresholds[[feat]][["high"]] <- 1.4
+thresholds[[feat]][["low"]] <- .6
+```
+
+```{r}
+VlnPlot(sobj, features = feat) %>% plot_lines(feat) %>% show()
+```
+
+## Next feature (6) to filter:
+
+```{r}
+feat <- features[6]
+VlnPlot(sobj, features = feat) %>% plot_vln %>% show()
+VlnPlot(sobj, features = feat, log = T) %>% plot_vln %>% show()
+```
+
+```{r}
+thresholds[[feat]][["high"]] <- 9
+thresholds[[feat]][["low"]] <- 4
+```
+
+```{r}
+VlnPlot(sobj, features = feat) %>% plot_lines(feat) %>% show()
+VlnPlot(sobj, features = feat, log = T) %>% plot_lines(feat) %>% show()
+```
+
+## Resulting thresholds:
+
+```{r}
+thresholds
+```
+
+# Subset:
+
+```{r}
+sobj <- subset(
+  x = sobj,
+  subset = (
+    nCount_ATAC < thresholds[["nCount_ATAC"]][["high"]] &
+      nCount_ATAC > thresholds[["nCount_ATAC"]][["low"]] &
+      nFeature_ATAC < thresholds[["nFeature_ATAC"]][["high"]] &
+      nFeature_ATAC > thresholds[["nFeature_ATAC"]][["low"]] &
+      nCount_RNA < thresholds[["nCount_RNA"]][["high"]] &
+      nCount_RNA > thresholds[["nCount_RNA"]][["low"]] &
+      nFeature_RNA < thresholds[["nFeature_RNA"]][["high"]] &
+      nFeature_RNA > thresholds[["nFeature_RNA"]][["low"]] &
+      nucleosome_signal < thresholds[["nucleosome_signal"]][["high"]] &
+      nucleosome_signal > thresholds[["nucleosome_signal"]][["low"]] &
+      TSS.enrichment < thresholds[["TSS.enrichment"]][["high"]] &
+      TSS.enrichment > thresholds[["TSS.enrichment"]][["low"]]
+  )
+)
+```
+
+# Look at subsetting result:
+
+```{r}
+for (feat in features) {
+  VlnPlot(sobj, features = feat) %>%
+    plot_vln %>%
+    show()
+  VlnPlot(sobj, features = feat, log = T) %>%
+    plot_vln %>%
+    show()
+}
+```
+
+# Save Seurat object
+
+```{r}
+saveRDS(sobj, file = str_glue("{output_dir}seurat_object_preprocessed.rds"))
+```
