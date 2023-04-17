@@ -1,0 +1,193 @@
+---
+jupyter:
+  jupytext:
+    formats: ipynb,Rmd
+    text_representation:
+      extension: .Rmd
+      format_name: rmarkdown
+      format_version: '1.2'
+      jupytext_version: 1.14.4
+  kernelspec:
+    display_name: R
+    language: R
+    name: ir
+---
+
+# Setup
+
+```{r}
+source("helpers.R")
+```
+
+```{r}
+library(Matrix)
+```
+
+```{r}
+str_glue("- project_path: {project_path}")
+str_glue("- output_dir: {output_dir}")
+str_glue("- plot_dir: {plot_dir}")
+str_glue("- raw_dir: {raw_dir}")
+str_glue("- h5_path: {h5_path}")
+str_glue("- fragments_path: {fragments_path}")
+str_glue("- seed: {seed}")
+```
+
+```{r}
+rds_path <- str_glue("{output_dir}seurat_object_preprocessed.rds")
+```
+
+```{r}
+rds_path %>% dirname %>% dir
+```
+
+```{r}
+inputs <- c(
+  "rds" = rds_path
+)
+outputs <- c(
+  "metadata" = str_glue("{output_dir}metadata.tsv"),
+  "pca_rna" = str_glue("{output_dir}rna_pca.tsv"),
+  "cell_whitelist" = str_glue("{output_dir}cell_whitelist.tsv"),
+  "atac_features" = str_glue("{output_dir}atac_features.tsv"),
+  "atac_matrix" = str_glue("{output_dir}atac_matrix.mm"),
+  "rds" = str_glue("{output_dir}seurat_object_pre_SAILERX.rds")
+)
+```
+
+```{r}
+"inputs:"
+inputs
+"outputs:"
+outputs
+# for (m in names(outputs)) {
+#   print(str_c(m, ": ", outputs[[m]]))
+# }
+```
+
+# Load data
+
+```{r}
+sobj <- readRDS(rds_path)
+sobj
+```
+
+# Process
+
+```{r}
+DefaultAssay(sobj) <- "RNA"
+
+sobj <- NormalizeData(sobj, verbose = F)
+sobj <- FindVariableFeatures(sobj, verbose = F)
+sobj <- ScaleData(sobj, verbose = F)
+sobj <- RunPCA(sobj, verbose = F)
+```
+
+```{r}
+sobj %>% ElbowPlot
+```
+
+```{r}
+sobj <- FindNeighbors(sobj, dims = 1:18, assay = "RNA")
+```
+
+```{r}
+sobj <- FindClusters(sobj, random.seed = seed)
+```
+
+```{r}
+sobj
+```
+
+```{r tags=c()}
+sobj@reductions$pca@feature.loadings[,"PC_1"] %>% sort %>% rev
+```
+
+---
+
+
+# Export:
+
+- metadata
+- PCA embeddings
+- whitelist of cell barcodes
+- ATAC peak count matrix
+
+
+## Metadata
+
+```{r}
+sobj@meta.data$orig.ident <- "Immature"
+```
+
+```{r tags=c()}
+sobj[[]]
+```
+
+```{r}
+sobj[[]] %>%
+  rownames_to_column(var = "barcode") %>%
+  write_delim(file = outputs[["metadata"]], delim = "\t")
+```
+
+## PCA embeddings
+
+```{r}
+sobj@reductions$pca
+```
+
+```{r tags=c()}
+sobj@reductions$pca@cell.embeddings
+```
+
+```{r tags=c()}
+sobj@reductions$pca@cell.embeddings %>% as.data.frame
+```
+
+```{r}
+sobj@reductions$pca@cell.embeddings %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "barcode") %>%
+  write_delim(file = outputs[["pca_rna"]], delim = "\t")
+```
+
+## Whitelist of cell barcodes
+
+```{r}
+sobj[[]] %>% rownames %>% length
+```
+
+```{r}
+sobj[[]] %>% rownames %>% write(file = outputs[["cell_whitelist"]])
+```
+
+## ATAC peak count matrix
+
+```{r}
+sobj@assays$ATAC@counts
+```
+
+```{r}
+atac_features <- (sobj@assays$ATAC@counts %>% rownames())[sobj@assays$ATAC@counts %>%
+  rownames() %>%
+  str_detect(pattern = "^chr") %>%
+  which()]
+```
+
+```{r}
+atac_features %>% length
+```
+
+```{r}
+atac_features %>% write(file = outputs[["atac_features"]])
+```
+
+```{r}
+sobj@assays$ATAC@counts[atac_features,] %>% writeMM(file = outputs[["atac_matrix"]])
+```
+
+## Save RDS of Seurat object
+
+```{r}
+sobj %>% saveRDS(file = outputs[["rds"]])
+```
