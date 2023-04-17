@@ -1,0 +1,1024 @@
+---
+jupyter:
+  jupytext:
+    formats: ipynb,Rmd
+    text_representation:
+      extension: .Rmd
+      format_name: rmarkdown
+      format_version: '1.2'
+      jupytext_version: 1.14.4
+  kernelspec:
+    display_name: R
+    language: R
+    name: ir
+---
+
+# Evaluate SAILERX results and start Seurat processing
+
+```{r}
+source("helpers.R")
+```
+
+```{r}
+str_glue("- project_path: {project_path}")
+str_glue("- output_dir: {output_dir}")
+str_glue("- plot_dir: {plot_dir}")
+str_glue("- seed: {seed}")
+```
+
+```{r}
+inputs <- c(
+  "pre_SAILERX_rds" = str_glue("{output_dir}seurat_object_pre_SAILERX.rds"),
+  "sailerx_embeddings" = str_glue("{output_dir}sailerx_embeddings.csv")
+)
+outputs <- c(
+  "post_SAILERX_rds" = str_glue("{output_dir}seurat_object_post_SAILERX.rds"),
+  "sailerx_colours" = str_c(output_dir, "sailerx_cluster_colours"),
+  "markers_cl0_vs_cl3" = str_c(output_dir, "markers_", "0", "vs_", "3", ".csv"),
+  "markers_cl3_vs_cl0" = str_c(output_dir, "markers_", "3", "vs_", "0", ".csv")
+)
+```
+
+```{r}
+"inputs:"
+inputs
+"outputs:"
+outputs
+```
+
+```{r}
+colours_features <- c("moccasin", "darkslategray")
+colours_features
+```
+
+---
+
+```{r}
+sobj <- readRDS(inputs["pre_SAILERX_rds"])
+```
+
+```{r}
+sobj
+```
+
+```{r}
+sobj@meta.data$pca_clusters <- sobj@meta.data$`RNA_snn_res.0.8`
+```
+
+```{r}
+sobj@meta.data$orig.ident <- "Immature"
+```
+
+```{r}
+sobj[[]] %>% head
+```
+
+```{r}
+dir(inputs["pre_SAILERX_rds"] %>% dirname)
+```
+
+```{r}
+embeddings = read.csv(inputs["sailerx_embeddings"], row.names = "cells")#, col.names = as.character(1:51))
+```
+
+```{r}
+dim(embeddings)
+```
+
+```{r}
+colnames(embeddings) <- 1:50
+```
+
+```{r}
+head(embeddings)
+```
+
+## Make new dimred for the seurat object
+
+```{r}
+Reductions(sobj)
+```
+
+```{r}
+sobj[["SAILERX"]] <- SeuratObject::CreateDimReducObject(
+  embeddings = as.matrix(embeddings),
+  key = "sailerx_", assay = "RNA",
+  misc = list(notes = "Embeddings generated with SAILERX.")
+)
+```
+
+```{r}
+Reductions(sobj)
+```
+
+```{r}
+DimPlot(sobj, reduction = "SAILERX", group.by = "pca_clusters") + coord_fixed()
+```
+
+```{r}
+DimPlot(sobj, reduction = "pca", group.by = "pca_clusters") + coord_fixed()
+```
+
+```{r}
+ProjectDim(sobj, reduction = "SAILERX")
+```
+
+```{r}
+ProjectDim(sobj, reduction = "pca")
+```
+
+```{r}
+slotNames(sobj@reductions$SAILERX)
+```
+
+```{r}
+dim(sobj@reductions$SAILERX@cell.embeddings)
+```
+
+## RNA clustering + UMAP
+
+```{r}
+DefaultAssay(sobj) <- "RNA"
+```
+
+```{r}
+sobj <- FindNeighbors(sobj,
+  dims = 1:50,
+  reduction = "SAILERX",
+  graph.name = c("RNA_SAILERX_nn", "RNA_SAILERX_snn")
+)
+```
+
+```{r}
+Graphs(sobj)
+```
+
+```{r}
+sobj <- FindClusters(sobj, graph.name = "RNA_SAILERX_snn")
+```
+
+```{r}
+sobj[["sailerx_clusters"]] <- sobj[["seurat_clusters"]]
+```
+
+```{r tags=c()}
+sobj <- RunUMAP(sobj,
+  reduction = "SAILERX", dims = 1:50,
+  reduction.name = "UMAP_SAILERX",
+  reduction.key = "UMAPSAILERX_", return.model = T
+)
+```
+
+```{r}
+Reductions(sobj)
+```
+
+```{r}
+p <- DimPlot(sobj, reduction = "UMAP_SAILERX", group.by = "sailerx_clusters", label = T, label.box = T, cols = "Paired") + coord_fixed()
+p
+```
+
+```{r}
+sobj@reductions$UMAP_SAILERX@cell.embeddings %>% head
+```
+
+```{r}
+n_clusters <- (sobj[["sailerx_clusters"]] %>% unique() %>% dim())[1]
+sailerx_colours <- palette.colors(n = n_clusters, palette = "Dark 2")
+# sailerx_colours <- palette.colors(n = n_clusters, palette = "Classic Tableau")
+```
+
+```{r}
+p = DimPlot(sobj, reduction = "UMAP_SAILERX", group.by = "sailerx_clusters", label = T, label.box = T, cols = sailerx_colours) + coord_fixed()
+p
+```
+
+```{r}
+names(sailerx_colours) <- 0:(length(sailerx_colours) - 1)
+sailerx_colours
+```
+
+```{r}
+write.table(sailerx_colours, file = outputs[["sailerx_colours"]], col.names = F)
+```
+
+```{r}
+ggsave(
+  filename = str_c("umap_sailerx_RNA", ".svg"),
+  path = plot_dir,
+  plot = p,
+  device = "svg",
+  width = 7,
+  height = 7,
+  units = "in"
+)
+```
+
+## New UMAP w/ clusters separated
+
+```{r}
+p <- DimPlot(sobj,
+  reduction = "UMAP_SAILERX",
+  split.by = "sailerx_clusters",
+  group.by = "sailerx_clusters",
+  label = T, label.box = T, cols = sailerx_colours, ncol = 3
+) + coord_fixed()
+p
+```
+
+```{r}
+plots <- list()
+paired_colours <- sailerx_colours
+for (cl in 0:(n_clusters-1)) {
+  plots[[as.character(cl)]] <- DimPlot(
+    sobj,
+    reduction = "UMAP_SAILERX",
+    cells.highlight = WhichCells(
+      sobj,
+      expr = sailerx_clusters == cl
+    ),
+    cols.highlight = paired_colours[[cl+1]]
+  ) +
+    coord_fixed() +
+    NoLegend() +
+    # labs(
+    #   title = cl,
+    # ) +
+    xlab("") +
+    ylab("") +
+    # NoAxes() #+
+    theme(
+      axis.text.x = element_blank(),
+      axis.text.y = element_blank()#,
+      # axis.ticks = element_blank()
+    )
+}
+```
+
+```{r}
+p <- (plots[["0"]] | plots[["1"]] | plots[["2"]]) /
+  (plots[["3"]] | plots[["4"]] | plots[["5"]])
+p
+```
+
+```{r}
+ggsave(
+  plot = p,
+  filename = str_c(plot_dir, "umap_clusters_separately.svg"),
+  device = "svg", height = 11, width = 11, units = "in"
+)
+```
+
+<!-- #region tags=[] -->
+---
+
+## Differentially expressed genes
+<!-- #endregion -->
+
+```{r}
+p <- FeaturePlot(
+  sobj,
+  features = c(
+    "nCount_RNA",
+    "nCount_ATAC",
+    "nFeature_RNA",
+    "nFeature_ATAC"
+  ),
+  order = T,
+  max.cutoff = "q99",
+  reduction = "UMAP_SAILERX",
+  cols = colours_features,
+  coord.fixed = T
+)
+p
+```
+
+```{r}
+ggsave(
+  filename = str_c("depth_stats", ".svg"),
+  path = plot_dir,
+  plot = p,
+  device = "svg",
+  width = 10,
+  height = 10,
+  units = "in"
+)
+```
+
+```{r}
+markers_rna <- FindAllMarkers(sobj, assay = "RNA", features = VariableFeatures(sobj))
+```
+
+```{r tags=c()}
+markers_rna
+```
+
+```{r tags=c()}
+markers_rna <- markers_rna %>% arrange(cluster, desc(avg_log2FC)) 
+markers_rna %>% head
+```
+
+```{r}
+write.table(markers_rna, file = str_c(output_dir, "RNA_markers.tsv"), sep = "\t")
+```
+
+```{r}
+top_markers <- markers_rna %>%
+    group_by(cluster) %>%
+    slice_max(n = 2, order_by = avg_log2FC)
+top_markers
+```
+
+```{r}
+only_markers = list()
+for (i in unique(top_markers$cluster)) {
+    only_markers[i] = c(top_markers[top_markers$cluster == i,"gene"])
+}
+only_markers
+```
+
+```{r}
+stopifnot(all(Idents(sobj) == sobj[[]][["sailerx_clusters"]] ))
+```
+
+```{r}
+plot_top_markers <- function(i, object = sobj, markers = only_markers) {
+  n_clusters <- (object[["sailerx_clusters"]] %>% unique() %>% dim())[1]
+  Idents(object) <- "sailerx_clusters"
+  colours <- sailerx_colours
+  if (typeof(i) != "character") {
+    i <- as.character(i)
+  }
+  return(
+    ((FeaturePlot(
+      object,
+      features = markers[[i]][1],
+      reduction = "UMAP_SAILERX",
+      max.cutoff = "q99"
+    ) + coord_fixed()
+      + xlab("")
+      + ylab("")
+    ) |
+      (FeaturePlot(
+        object,
+        features = markers[[i]][2],
+        reduction = "UMAP_SAILERX",
+        max.cutoff = "q99"
+      ) + coord_fixed()
+        + xlab("")
+        + ylab("")
+      )) /
+      (
+        # (DimPlot(object, reduction = "UMAP_SAILERX", group.by = "sailerx_clusters", label = T, label.box = T, repel = T, cols = brewer.pal(n_clusters, "Paired")) + coord_fixed()) |
+        (DimPlot(
+          object,
+          reduction = "UMAP_SAILERX",
+          cells.highlight = WhichCells(object, expression = sailerx_clusters == i),
+          cols.highlight = colours[(i %>% as.integer()) + 1]
+        ) + coord_fixed() + NoLegend()) |
+          (
+            (VlnPlot(
+              object,
+              features = markers[[i]][1],
+              cols = colours
+            ) + NoLegend()
+              + xlab("")
+              + ylab("")
+            ) /
+              (VlnPlot(
+                object,
+                features = markers[[i]][2],
+                cols = colours
+              ) + NoLegend())
+          )
+      )
+  ) + plot_annotation(title = str_c("Top markers for cluster ", i))
+}
+```
+
+```{r}
+save_plot_top_markers <- function(i, modality = "RNA") {
+  if (typeof(i) != "character") {
+    i <- as.character(i)
+  }
+  ggsave(
+    filename = str_c("top_markers_", modality, "_", i, ".svg"),
+    path = plot_dir,
+    plot = plot_top_markers(i),
+    device = "svg",
+    width = 10,
+    height = 10,
+    units = "in"
+  )
+}
+```
+
+```{r}
+for (i in unique(top_markers$cluster)) {
+  save_plot_top_markers(i)
+}
+```
+
+```{r}
+# save_plot_top_markers(0)
+```
+
+```{r}
+plot_top_markers(4)
+```
+
+```{r}
+plot_top_markers(3)
+```
+
+```{r tags=c()}
+plot_top_markers(0)
+```
+
+```{r}
+plot_top_markers(2)
+```
+
+## DEGs in main bulk of dataset
+
+```{r}
+DimPlot(sobj, group.by = "sailerx_clusters", cols = sailerx_colours, label = T, label.box = T) + coord_fixed()
+```
+
+```{r tags=c()}
+clusters <- 0:3 %>% as.character
+markers_main <- list()
+for (cl in clusters) {
+  # print(cl)
+  # print(clusters[!clusters %in% cl])
+  markers_main[[cl]] <- FindMarkers(sobj,
+    ident.1 = cl,
+    ident.2 = clusters[!clusters %in% cl],
+    group.by = "sailerx_clusters",
+    assay = "RNA"
+  )
+}
+markers_main <- lapply(markers_main, FUN = \(x) x %>% arrange(desc(avg_log2FC)))
+lapply(markers_main, head)
+```
+
+```{r}
+top_markers_main <- lapply(markers_main, \(x) x %>% head %>% rownames)
+top_markers_main
+```
+
+```{r}
+for (i in as.character(0:3)) {
+  write.csv(markers_main[[i]], file = str_c(output_dir, i, ".csv"))
+}
+```
+
+```{r}
+FeaturePlot(sobj, features = top_markers_main[["0"]][1:4], cols = colours_features, coord.fixed = T)
+```
+
+```{r}
+for (i in 0:1) {
+  plot_top_markers(i, markers = top_markers_main) %>% show
+}
+```
+
+```{r}
+for (i in 2:3) {
+  plot_top_markers(i, markers = top_markers_main) %>% show
+}
+```
+
+- 0
+    - L
+- 1
+    - L
+- 2
+    - L
+- 3
+    - Lcn2 neutrophils
+    - Lyz2 unclear
+
+```{r}
+top_markers[c("cluster", "gene")]
+top_markers_main
+```
+
+## DEGs cluster 0 vs cluster 3
+
+```{r}
+markers_vs <- list()
+markers_vs[["0"]] <- FindMarkers(sobj,
+  ident.1 = 0,
+  ident.2 = 3,
+  group.by = "sailerx_clusters",
+  assay = "RNA"
+)
+markers_vs[["3"]] <- FindMarkers(sobj,
+  ident.1 = 3,
+  ident.2 = 0,
+  group.by = "sailerx_clusters",
+  assay = "RNA"
+)
+markers_vs <- lapply(markers_vs, FUN = \(x) x %>% arrange(desc(avg_log2FC)))
+lapply(markers_vs, head)
+```
+
+```{r}
+lapply(markers_vs, dim)
+```
+
+```{r}
+lapply(
+  markers_vs,
+  \(x) x[x$pct.1 > .4, ] %>% dim()
+)
+```
+
+```{r}
+markers_vs <- lapply(
+  markers_vs,
+  \(x) x[x$pct.1 > .4, ]
+)
+lapply(markers_vs, head, n=3)
+```
+
+```{r}
+for (l in names(markers_vs)) {
+    markers_vs[[l]]$pct.ratio <- markers_vs[[l]]$pct.1 / markers_vs[[l]]$pct.2
+}
+lapply(markers_vs, head, n=3)
+```
+
+```{r}
+lapply(markers_vs, \(x) hist(x$pct.ratio)[1] )
+```
+
+```{r}
+lapply(
+  markers_vs,
+  \(x) x[x$pct.ratio > 1.3, ] %>% dim()
+)
+```
+
+```{r}
+markers_vs <- lapply(
+  markers_vs,
+  \(x) x[x$pct.ratio > 1.3, ]
+)
+```
+
+```{r}
+lapply(markers_vs, head, n = 5)
+```
+
+```{r}
+lapply(
+  markers_vs,
+  \(x) x %>% arrange(desc(pct.ratio)) %>% head(n=4)
+)
+```
+
+```{r}
+lapply(
+  markers_vs,
+  \(x) x %>%
+    arrange(desc(pct.ratio)) %>%
+    head(n = 4) %>%
+    rownames() %>%
+    FeaturePlot(sobj, features = ., cols = colours_features)
+)
+```
+
+```{r}
+lapply(
+  markers_vs,
+  \(x) x %>%
+    head(n = 4) %>%
+    rownames() %>%
+    FeaturePlot(sobj, features = ., cols = colours_features, coord.fixed = T)
+)
+```
+
+```{r}
+# sobj <-
+for (l in names(markers_vs)) {
+  AddModuleScore(
+    sobj,
+    features = list(markers_vs[[l]] %>% rownames()),
+    name = str_glue("cluster_{l}")
+  ) %>%
+    FeaturePlot(.,
+      features = str_glue("cluster_{l}1"),
+      pt.size = .8,
+      coord.fixed = T,
+      order = T,
+      cols = c("lightpink", "darkgreen")
+    ) %>% show
+}
+```
+
+```{r}
+# sobj <-
+for (l in names(markers_vs)) {
+  AddModuleScore(
+    sobj,
+    features = list(markers_vs[[l]] %>% rownames()),
+    name = str_glue("cluster_{l}")
+  ) %>%
+    FeaturePlot(.,
+      features = str_glue("cluster_{l}1"),
+      pt.size = .8,
+      coord.fixed = T,
+      order = T,
+      cols = colours_features
+    ) %>% show
+}
+```
+
+```{r}
+lapply(markers_vs, FUN = \(x) dim(x))
+```
+
+```{r tags=c()}
+markers_vs[["0"]][markers_vs[["0"]]$avg_log2FC > .3,] %>% dim
+markers_vs[["3"]][markers_vs[["3"]]$avg_log2FC > .3,] %>% dim
+```
+
+```{r tags=c()}
+markers_vs
+```
+
+```{r tags=c()}
+module_scores <- list()
+module_scores[["0"]] <- markers_vs[["0"]][markers_vs[["0"]]$avg_log2FC > .3,]
+module_scores[["3"]] <- markers_vs[["3"]][markers_vs[["3"]]$avg_log2FC > .3,]
+```
+
+```{r}
+# sobj <-
+for (l in names(markers_vs)) {
+  sobj <- AddModuleScore(
+    sobj,
+    features = list(markers_vs[[l]] %>% rownames()),
+    name = str_glue("cluster_{l}")
+  )
+  sobj[[str_glue("cluster_{l}")]] <- sobj[[str_glue("cluster_{l}1")]]
+  sobj[[str_glue("cluster_{l}1")]] <- NULL
+}
+```
+
+```{r}
+# # sobj <-
+# for (l in names(markers_vs)) {
+#   sobj <- AddModuleScore(
+#     sobj,
+#     features = list(module_scores[[l]] %>% rownames()),
+#     name = str_glue("cluster_{l}")
+#   )
+#   sobj[[str_glue("cluster_{l}")]] <- sobj[[str_glue("cluster_{l}1")]]
+#   sobj[[str_glue("cluster_{l}1")]] <- NULL
+# }
+```
+
+```{r}
+sobj[[]] %>% head
+```
+
+```{r}
+for (l in names(markers_vs)) {
+  FeaturePlot(sobj,
+    features = str_glue("cluster_{l}"),
+    pt.size = .8,
+    coord.fixed = T,
+    order = T,
+    cols = c("moccasin", "darkslategray")
+  ) %>% show()
+}
+```
+
+```{r}
+write.csv(markers_vs[["0"]], file = outputs[["markers_cl0_vs_cl3"]])
+write.csv(markers_vs[["3"]], file = outputs[["markers_cl3_vs_cl0"]])
+```
+
+```{r}
+p <- list()
+for (l in c(0, 3) %>% as.character()) {
+  p[[l]] <- (
+    DotPlot(sobj,
+      assay = "RNA",
+      features = markers_vs[[l]] %>% rownames(),
+      # features = markers_vs[[l]][1:20, ] %>% rownames(),
+      cols = c("moccasin", "darkslategray")
+    ) +
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+  )
+}
+p
+```
+
+```{r}
+for (l in names(p)) {
+  ggsave(
+    p[[l]],
+    filename = str_c(plot_dir, "dotplot_markers_", l, ".svg"),
+    device = "svg",
+    width = 24,
+    height = 12,
+    units = "cm"
+  )
+}
+```
+
+# Cell cycle
+
+```{r}
+sobj <- CellCycleScoring(sobj,
+  s.features = cc.genes$s.genes %>% str_to_title(),
+  g2m.features = cc.genes$g2m.genes %>% str_to_title()
+)
+```
+
+```{r}
+p <- DimPlot(sobj, group.by = "Phase") + coord_fixed()
+p
+```
+
+```{r}
+ggsave(
+  p,
+  filename = str_c(plot_dir, "cc_phase", ".svg"),
+  device = "svg",
+  width = 14,
+  height = 14,
+  units = "cm"
+)
+```
+
+```{r}
+p <- FeaturePlot(sobj, features = "S.Score", max.cutoff = "q99", pt.size = .8, cols = colours_features) + coord_fixed()
+p
+```
+
+```{r}
+ggsave(
+  p,
+  filename = str_c(plot_dir, "S_Score", ".svg"),
+  device = "svg",
+  width = 14,
+  height = 14,
+  units = "cm"
+)
+```
+
+```{r}
+p <- FeaturePlot(sobj, features = "G2M.Score", max.cutoff = "q99", pt.size = .8, cols = colours_features) + coord_fixed()
+p
+```
+
+```{r}
+ggsave(
+  p,
+  filename = str_c(plot_dir, "G2M_Score", ".svg"),
+  device = "svg",
+  width = 14,
+  height = 14,
+  units = "cm"
+)
+```
+
+```{r}
+only_markers
+```
+
+```{r}
+featplot <- \(features, object = sobj) FeaturePlot(object, features = features, max.cutoff = "q99", pt.size = .8, cols = colours_features, coord.fixed = T)
+```
+
+```{r}
+featplot(c("PCNA", "TOP2A", "MCM6", "MKI67") %>% str_to_title, object = sobj)
+```
+
+# Save Seurat object as RDS
+
+```{r}
+sobj
+```
+
+```{r}
+sobj %>% saveRDS(file = outputs[["post_SAILERX_rds"]], compress = F)
+```
+
+Done.
+
+
+---
+---
+---
+---
+
+
+# Misc.
+
+
+## Ribosomal check
+
+```{r}
+sobj[[]] %>% names
+```
+
+```{r}
+sobj <- PercentageFeatureSet(sobj,
+  pattern = c("^Rp[sl][[:digit:]]|^Rplp[[:digit:]]|^Rpsa"),
+  col.name = "percent.ribo"
+)
+```
+
+```{r}
+featplot("percent.ribo")
+```
+
+```{r}
+FeaturePlot(sobj, features = "percent.ribo", coord.fixed = T, max.cutoff = "q99", pt.size = 1, order = T)
+```
+
+```{r}
+p <- FeaturePlot(
+  sobj,
+  features = c("percent.ribo", "nCount_ATAC"),
+  blend = T, max.cutoff = "q99", pt.size = .8, coord.fixed = T,
+    combine = F, order = T
+)
+p[3]
+```
+
+```{r}
+p <- FeaturePlot(
+  sobj,
+  features = c("percent.ribo", "nFeature_ATAC"),
+  blend = T, max.cutoff = "q99", pt.size = .8, coord.fixed = T,
+    combine = F, order = T
+)
+p[3]
+```
+
+```{r}
+p <- FeaturePlot(
+  sobj,
+  features = c("percent.ribo", "nCount_RNA"),
+  blend = T, max.cutoff = "q99", pt.size = .8, coord.fixed = T,
+    combine = F, order = T
+)
+p[3]
+```
+
+```{r}
+p <- FeaturePlot(
+  sobj,
+  features = c("percent.ribo", "nFeature_RNA"),
+  blend = T, max.cutoff = "q99", pt.size = 1, coord.fixed = T,
+    combine = F, order = T
+)
+p[3]
+```
+
+```{r}
+pattern = c("^Rp[sl][[:digit:]]|^Rplp[[:digit:]]|^Rpsa")
+```
+
+```{r}
+rownames(sobj) %>% str_detect(pattern = pattern, string = .) %>% table
+```
+
+```{r}
+rownames(sobj)[rownames(sobj) %>% str_detect(pattern = pattern, string = .)]
+```
+
+```{r}
+rownames(sobj)[rownames(sobj) %>% str_detect(pattern = "^Rp", string = .)]
+```
+
+```{r}
+rownames(sobj)[rownames(sobj) %>% str_detect(pattern = "^Rp", string = .)][!rownames(sobj)[rownames(sobj) %>% str_detect(pattern = "^Rp", string = .)] %in% rownames(sobj)[rownames(sobj) %>% str_detect(pattern = pattern, string = .)]]
+```
+
+```{r}
+VlnPlot(sobj, features = "percent.ribo", cols = sailerx_colours)
+```
+
+```{r}
+RidgePlot(sobj, features = "percent.ribo")
+```
+
+```{r}
+sobj[[]] %>% names
+```
+
+```{r}
+featplot("TSS.enrichment")
+```
+
+```{r}
+featplot("TSS.percentile")
+```
+
+```{r}
+featplot("percent.mt")
+```
+
+```{r}
+rownames(sobj) %>% str_detect("^MT|^Mt", string=.) %>% table
+rownames(sobj) %>% str_detect("^Mt", string=.) %>% table
+rownames(sobj) %>% str_detect("^MT", string=.) %>% table
+```
+
+```{r}
+sobj[["percent.mt"]] <- PercentageFeatureSet(sobj, pattern = "^Mt")
+```
+
+```{r}
+featplot("percent.mt")
+```
+
+---
+
+## Histogram of marker genes
+
+```{r}
+markers_rna %>% head
+```
+
+```{r}
+markers_rna %>%
+    group_by(cluster) %>%
+    summarise(
+        `#` = n(),
+        max_FC = max(avg_log2FC),
+        min_FC = min(avg_log2FC),
+        mean_FC = mean(avg_log2FC),
+        median_FC = median(avg_log2FC),
+        max_pct1 = max(pct.1),
+        min_pct1 = min(pct.1),
+    )
+```
+
+```{r}
+plot_hist <- function(i, feature = "avg_log2FC") {
+  return(
+    markers_rna %>%
+      dplyr::filter(cluster == i) %>%
+      ggplot(mapping = aes(x = .data[[feature]])) +
+      geom_histogram(color = "white", bins = 40) +
+      ggtitle(str_c("cluster ", i))
+  )
+}
+```
+
+```{r}
+p <- (plot_hist(0) | plot_hist(1) | plot_hist(2)) /
+(plot_hist(3) | plot_hist(4) | plot_hist(5))
+p
+```
+
+```{r}
+svg(filename = str_glue("{plot_dir}deg_histograms.svg"))
+show(p)
+dev.off()
+```
+
+```{r}
+plot_hist(2)
+```
+
+```{r}
+df <- sobj@reductions$UMAP_SAILERX@cell.embeddings %>%
+  as.data.frame %>%
+  rownames_to_column(var = "barcode") %>%
+  as_tibble() %>%
+  add_column("sailerx_clusters" = sobj[[]][["sailerx_clusters"]]) %>%
+  add_column("is_cluster_i" = sobj[[]][["sailerx_clusters"]] == i)
+df %>% head()
+```
+
+```{r}
+library(reshape2)
+```
+
+```{r}
+ggplot(
+  data = df,
+  mapping = aes(x = UMAPSAILERX_1, y = UMAPSAILERX_2, colour = is_cluster_i)
+) +
+  geom_point() +
+  scale_colour_discrete(
+  type = c("blue", "red")
+      ) +
+    # values = c("blue", "red")
+  # scale_fill_manual(
+  #   values = c("blue", "red"),
+  #   limits = c(TRUE, FALSE),
+  #   breaks = c(TRUE, FALSE)
+  # ) +
+  coord_fixed()
+```
