@@ -19,6 +19,12 @@
 # ---
 
 # %%
+import datetime
+import pytz
+
+"Notebook last run at " + datetime.datetime.now(pytz.timezone("Europe/Stockholm")).strftime("%Y-%m-%d %H:%M")
+
+# %%
 import os
 import re
 from collections import Counter
@@ -50,7 +56,8 @@ inputs = {
 }
 
 outputs = {
-    "h5_file": f"{output_dir}immature.h5"
+    # "h5_file": f"{output_dir}immature.h5"
+    "h5_file": f"{os.getenv('PROJECT_PATH')}/notebooks/Immature/SAILERX/data/immature.h5"
 }
 
 # %%
@@ -494,6 +501,9 @@ own_h5.close()
 
 # %% [markdown]
 # # Done!
+
+# %%
+"Notebook finished at " + datetime.datetime.now(pytz.timezone("Europe/Stockholm")).strftime("%Y-%m-%d %H:%M")
 
 # %% [markdown]
 # ---
