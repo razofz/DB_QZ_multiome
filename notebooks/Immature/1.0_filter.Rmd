@@ -55,6 +55,15 @@ sobj
 sobj[["percent.mt"]] <- PercentageFeatureSet(sobj, pattern = "^MT")
 ```
 
+```{r}
+h5$Peaks %>% dim
+h5$Peaks[str_detect(rownames(h5$Peaks), pattern = "chr"), ] %>% dim
+```
+
+```{r}
+h5$Peaks <- h5$Peaks[str_detect(rownames(h5$Peaks), pattern = "chr"), ]
+```
+
 ```{r tags=c()}
 annotation <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79, verbose = F)
 seqlevelsStyle(annotation) <- "UCSC"
