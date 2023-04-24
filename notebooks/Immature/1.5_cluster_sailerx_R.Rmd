@@ -16,6 +16,10 @@ jupyter:
 # Evaluate SAILERX results and start Seurat processing
 
 ```{r}
+Sys.time()
+```
+
+```{r}
 source("helpers.R")
 ```
 
@@ -34,8 +38,12 @@ inputs <- c(
 outputs <- c(
   "post_SAILERX_rds" = str_glue("{output_dir}seurat_object_post_SAILERX.rds"),
   "sailerx_colours" = str_c(output_dir, "sailerx_cluster_colours"),
-  "markers_cl0_vs_cl3" = str_c(output_dir, "markers_", "0", "vs_", "3", ".csv"),
-  "markers_cl3_vs_cl0" = str_c(output_dir, "markers_", "3", "vs_", "0", ".csv")
+  "markers_cl0_vs_cl2" = str_c(output_dir, "markers_", "0", "vs_", "2", ".csv"),
+  "markers_cl2_vs_cl0" = str_c(output_dir, "markers_", "2", "vs_", "0", ".csv"),
+  "markers_main_cl0" = str_c(output_dir, "markers_main_cl", "0", ".csv"),
+  "markers_main_cl1" = str_c(output_dir, "markers_main_cl", "1", ".csv"),
+  "markers_main_cl2" = str_c(output_dir, "markers_main_cl", "2", ".csv"),
+  "markers_main_cl4" = str_c(output_dir, "markers_main_cl", "4", ".csv")
 )
 ```
 
@@ -62,6 +70,10 @@ sobj
 ```
 
 ```{r}
+DefaultAssay(sobj)
+```
+
+```{r}
 sobj@meta.data$pca_clusters <- sobj@meta.data$`RNA_snn_res.0.8`
 ```
 
@@ -83,6 +95,58 @@ embeddings = read.csv(inputs["sailerx_embeddings"], row.names = "cells")#, col.n
 
 ```{r}
 dim(embeddings)
+```
+
+```{r}
+head(embeddings)
+```
+
+```{r}
+length(unique(embeddings$cells))
+```
+
+```{r}
+sobj[["ATAC"]] %>% dim
+```
+
+```{r}
+setdiff(Cells(sobj), rownames(embeddings))
+```
+
+```{r}
+intersect(Cells(sobj), rownames(embeddings)) %>% length
+```
+
+```{r}
+length(
+  setdiff(
+    Cells(sobj), rownames(embeddings)
+  )
+    )
+```
+
+```{r}
+sobj
+if (length(
+  setdiff(
+    Cells(sobj), rownames(embeddings)
+  )
+) != 0) {
+  sobj <- subset(sobj, cells = intersect(Cells(sobj), rownames(embeddings)))
+  sobj
+}
+```
+
+```{r}
+embeddings %>% dim
+if (length(
+  setdiff(
+    rownames(embeddings), Cells(sobj) 
+  )
+) != 0) {
+  embeddings <- embeddings[intersect(Cells(sobj), rownames(embeddings)), ]
+  embeddings %>% dim
+}
 ```
 
 ```{r}
@@ -193,6 +257,17 @@ p = DimPlot(sobj, reduction = "UMAP_SAILERX", group.by = "sailerx_clusters", lab
 p
 ```
 
+Invert UMAP y axis so it's similar to previous version:
+
+```{r}
+sobj@reductions$UMAP_SAILERX@cell.embeddings[,2] <- - sobj@reductions$UMAP_SAILERX@cell.embeddings[,2]
+```
+
+```{r}
+p = DimPlot(sobj, reduction = "UMAP_SAILERX", group.by = "sailerx_clusters", label = T, label.box = T, cols = sailerx_colours) + coord_fixed()
+p
+```
+
 ```{r}
 names(sailerx_colours) <- 0:(length(sailerx_colours) - 1)
 sailerx_colours
@@ -267,6 +342,81 @@ ggsave(
   filename = str_c(plot_dir, "umap_clusters_separately.svg"),
   device = "svg", height = 11, width = 11, units = "in"
 )
+```
+
+---
+
+# Cell cycle
+
+```{r}
+DefaultAssay(sobj) <- "RNA"
+```
+
+```{r}
+sobj <- CellCycleScoring(sobj,
+  s.features = cc.genes$s.genes %>% str_to_title(),
+  g2m.features = cc.genes$g2m.genes %>% str_to_title()
+)
+```
+
+```{r}
+p <- DimPlot(sobj, group.by = "Phase") + coord_fixed()
+p
+```
+
+```{r}
+ggsave(
+  p,
+  filename = str_c(plot_dir, "cc_phase", ".svg"),
+  device = "svg",
+  width = 14,
+  height = 14,
+  units = "cm"
+)
+```
+
+```{r}
+p <- FeaturePlot(sobj, features = "S.Score", max.cutoff = "q99", pt.size = .8, cols = colours_features) + coord_fixed()
+p
+```
+
+```{r}
+ggsave(
+  p,
+  filename = str_c(plot_dir, "S_Score", ".svg"),
+  device = "svg",
+  width = 14,
+  height = 14,
+  units = "cm"
+)
+```
+
+```{r}
+p <- FeaturePlot(sobj, features = "G2M.Score", max.cutoff = "q99", pt.size = .8, cols = colours_features) + coord_fixed()
+p
+```
+
+```{r}
+ggsave(
+  p,
+  filename = str_c(plot_dir, "G2M_Score", ".svg"),
+  device = "svg",
+  width = 14,
+  height = 14,
+  units = "cm"
+)
+```
+
+```{r}
+only_markers
+```
+
+```{r}
+featplot <- \(features, object = sobj) FeaturePlot(object, features = features, max.cutoff = "q99", pt.size = .8, cols = colours_features, coord.fixed = T)
+```
+
+```{r}
+featplot(c("PCNA", "TOP2A", "MCM6", "MKI67") %>% str_to_title, object = sobj)
 ```
 
 <!-- #region tags=[] -->
@@ -439,6 +589,10 @@ plot_top_markers(0)
 plot_top_markers(2)
 ```
 
+```{r}
+plot_top_markers(1)
+```
+
 ## DEGs in main bulk of dataset
 
 ```{r}
@@ -446,7 +600,7 @@ DimPlot(sobj, group.by = "sailerx_clusters", cols = sailerx_colours, label = T, 
 ```
 
 ```{r tags=c()}
-clusters <- 0:3 %>% as.character
+clusters <- c(0:2, 4) %>% as.character
 markers_main <- list()
 for (cl in clusters) {
   # print(cl)
@@ -460,6 +614,13 @@ for (cl in clusters) {
 }
 markers_main <- lapply(markers_main, FUN = \(x) x %>% arrange(desc(avg_log2FC)))
 lapply(markers_main, head)
+```
+
+```{r}
+write.csv(markers_main[["0"]], file = outputs[["markers_main_cl0"]])
+write.csv(markers_main[["1"]], file = outputs[["markers_main_cl1"]])
+write.csv(markers_main[["2"]], file = outputs[["markers_main_cl2"]])
+write.csv(markers_main[["4"]], file = outputs[["markers_main_cl4"]])
 ```
 
 ```{r}
@@ -484,38 +645,38 @@ for (i in 0:1) {
 ```
 
 ```{r}
-for (i in 2:3) {
+for (i in c(2, 4)) {
   plot_top_markers(i, markers = top_markers_main) %>% show
 }
 ```
-
-- 0
-    - L
-- 1
-    - L
-- 2
-    - L
-- 3
-    - Lcn2 neutrophils
-    - Lyz2 unclear
 
 ```{r}
 top_markers[c("cluster", "gene")]
 top_markers_main
 ```
 
-## DEGs cluster 0 vs cluster 3
+## (DEGs cluster 0 vs cluster 3)
+
+```{r}
+p = DimPlot(sobj, reduction = "UMAP_SAILERX", group.by = "sailerx_clusters", label = T, label.box = T, cols = sailerx_colours) + coord_fixed()
+p
+```
+
+Should be probably clusters 0 and 2 now, so:
+
+
+## DEGs cluster 0 vs cluster 2
 
 ```{r}
 markers_vs <- list()
 markers_vs[["0"]] <- FindMarkers(sobj,
   ident.1 = 0,
-  ident.2 = 3,
+  ident.2 = 2,
   group.by = "sailerx_clusters",
   assay = "RNA"
 )
-markers_vs[["3"]] <- FindMarkers(sobj,
-  ident.1 = 3,
+markers_vs[["2"]] <- FindMarkers(sobj,
+  ident.1 = 2,
   ident.2 = 0,
   group.by = "sailerx_clusters",
   assay = "RNA"
@@ -586,7 +747,7 @@ lapply(
     arrange(desc(pct.ratio)) %>%
     head(n = 4) %>%
     rownames() %>%
-    FeaturePlot(sobj, features = ., cols = colours_features)
+    FeaturePlot(sobj, features = ., cols = colours_features, coord.fixed = T)
 )
 ```
 
@@ -642,7 +803,7 @@ lapply(markers_vs, FUN = \(x) dim(x))
 
 ```{r tags=c()}
 markers_vs[["0"]][markers_vs[["0"]]$avg_log2FC > .3,] %>% dim
-markers_vs[["3"]][markers_vs[["3"]]$avg_log2FC > .3,] %>% dim
+markers_vs[["2"]][markers_vs[["2"]]$avg_log2FC > .3,] %>% dim
 ```
 
 ```{r tags=c()}
@@ -652,7 +813,7 @@ markers_vs
 ```{r tags=c()}
 module_scores <- list()
 module_scores[["0"]] <- markers_vs[["0"]][markers_vs[["0"]]$avg_log2FC > .3,]
-module_scores[["3"]] <- markers_vs[["3"]][markers_vs[["3"]]$avg_log2FC > .3,]
+module_scores[["2"]] <- markers_vs[["2"]][markers_vs[["2"]]$avg_log2FC > .3,]
 ```
 
 ```{r}
@@ -698,13 +859,13 @@ for (l in names(markers_vs)) {
 ```
 
 ```{r}
-write.csv(markers_vs[["0"]], file = outputs[["markers_cl0_vs_cl3"]])
-write.csv(markers_vs[["3"]], file = outputs[["markers_cl3_vs_cl0"]])
+write.csv(markers_vs[["0"]], file = outputs[["markers_cl0_vs_cl2"]])
+write.csv(markers_vs[["2"]], file = outputs[["markers_cl2_vs_cl0"]])
 ```
 
 ```{r}
 p <- list()
-for (l in c(0, 3) %>% as.character()) {
+for (l in c(0, 2) %>% as.character()) {
   p[[l]] <- (
     DotPlot(sobj,
       assay = "RNA",
@@ -729,75 +890,6 @@ for (l in names(p)) {
     units = "cm"
   )
 }
-```
-
-# Cell cycle
-
-```{r}
-sobj <- CellCycleScoring(sobj,
-  s.features = cc.genes$s.genes %>% str_to_title(),
-  g2m.features = cc.genes$g2m.genes %>% str_to_title()
-)
-```
-
-```{r}
-p <- DimPlot(sobj, group.by = "Phase") + coord_fixed()
-p
-```
-
-```{r}
-ggsave(
-  p,
-  filename = str_c(plot_dir, "cc_phase", ".svg"),
-  device = "svg",
-  width = 14,
-  height = 14,
-  units = "cm"
-)
-```
-
-```{r}
-p <- FeaturePlot(sobj, features = "S.Score", max.cutoff = "q99", pt.size = .8, cols = colours_features) + coord_fixed()
-p
-```
-
-```{r}
-ggsave(
-  p,
-  filename = str_c(plot_dir, "S_Score", ".svg"),
-  device = "svg",
-  width = 14,
-  height = 14,
-  units = "cm"
-)
-```
-
-```{r}
-p <- FeaturePlot(sobj, features = "G2M.Score", max.cutoff = "q99", pt.size = .8, cols = colours_features) + coord_fixed()
-p
-```
-
-```{r}
-ggsave(
-  p,
-  filename = str_c(plot_dir, "G2M_Score", ".svg"),
-  device = "svg",
-  width = 14,
-  height = 14,
-  units = "cm"
-)
-```
-
-```{r}
-only_markers
-```
-
-```{r}
-featplot <- \(features, object = sobj) FeaturePlot(object, features = features, max.cutoff = "q99", pt.size = .8, cols = colours_features, coord.fixed = T)
-```
-
-```{r}
-featplot(c("PCNA", "TOP2A", "MCM6", "MKI67") %>% str_to_title, object = sobj)
 ```
 
 # Save Seurat object as RDS
@@ -1021,4 +1113,21 @@ ggplot(
   #   breaks = c(TRUE, FALSE)
   # ) +
   coord_fixed()
+```
+
+```{r}
+sobj@assays$ATAC@ranges %>% seqinfo
+```
+
+```{r}
+DefaultAssay(sobj) <- "ATAC"
+list(granges(sobj))
+```
+
+```{r}
+list(granges(sobj@assays$ATAC))
+```
+
+```{r}
+Sys.time()
 ```

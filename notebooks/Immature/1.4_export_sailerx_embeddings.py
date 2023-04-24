@@ -17,6 +17,12 @@
 # # Evaluating SAILERX results
 
 # %%
+import datetime
+import pytz
+
+"Notebook last run at " + datetime.datetime.now(pytz.timezone("Europe/Stockholm")).strftime("%Y-%m-%d %H:%M")
+
+# %%
 import re
 import os
 
@@ -36,6 +42,12 @@ inputs = {
 outputs = {
     "embedding_csv": f"{output_dir}sailerx_embeddings.csv"
 }
+
+# %%
+# ls {inputs["immature_cells"]}
+
+# %%
+# !wc -l {inputs["immature_cells"]}
 
 # %%
 embedding = np.load(inputs["embedding"], allow_pickle=False)
@@ -74,3 +86,9 @@ df.to_csv(outputs["embedding_csv"])
 
 # %%
 # !head {outputs["embedding_csv"]} -n 3
+
+# %%
+"Notebook finished at " + datetime.datetime.now(pytz.timezone("Europe/Stockholm")).strftime("%Y-%m-%d %H:%M")
+
+# %% [markdown]
+# ---
