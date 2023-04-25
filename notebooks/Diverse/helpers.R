@@ -1,7 +1,7 @@
 invisible(sapply(c(
   "stringr",
   "parallel",
-  "docstring",
+  # "docstring",
   "patchwork",
   "ggplot2",
   "tidyr",
@@ -23,8 +23,9 @@ invisible(sapply(c(
 }))
 
 project_path <- Sys.getenv("PROJECT_PATH")
-output_dir <- str_c(project_path, "/data/adhoc/lower_features/")
+output_dir <- str_c(project_path, "/data/processed/notebooks/Diverse/")
 plot_dir <- str_c(output_dir, "plots/")
+external_dir <- str_c(project_path, "/data/external/")
 rds_path <- str_c(output_dir, "seurat_object_post_atac_processing.rds")
 raw_dir <- str_c(project_path, "/data/raw/aggregate/2021_083_Qinyu_agg/outs/")
 h5_path <- str_c(raw_dir, "filtered_feature_bc_matrix.h5")
