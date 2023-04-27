@@ -16,6 +16,11 @@ jupyter:
 # Setup
 
 ```{r}
+start_time <- Sys.time()
+start_time
+```
+
+```{r}
 source("helpers.R")
 ```
 
@@ -436,4 +441,11 @@ sobj <- AddMotifs(
 
 ```{r}
 saveRDS(sobj, file = str_glue("{output_dir}seurat_object_preprocessed.rds"))
+```
+
+```{r}
+end_time <- Sys.time()
+end_time
+"Took this long to run:"
+end_time - start_time
 ```
