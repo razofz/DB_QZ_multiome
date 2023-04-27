@@ -16,13 +16,16 @@ jupyter:
 # Setup
 
 ```{r}
+Sys.time()
+```
+
+```{r}
 source("helpers.R")
 ```
 
 ```{r}
 invisible(sapply(c(
   "TFBSTools",
-  "stringr",
   # "patchwork",
   # "ggplot2",
   "Seurat",
@@ -48,10 +51,21 @@ str_glue("- fragments_path: {fragments_path}")
 str_glue("- seed: {seed}")
 ```
 
+```{r}
+inputs <- c(
+  "h5" = h5_path,
+  "fragments" = fragments_path,
+  "TSS_reference" = str_c(external_dir, "GREATv4.genes.mm10.tsv")
+)
+outputs <- c()
+inputs
+outputs
+```
+
 # Load data
 
 ```{r}
-h5 <- Read10X_h5(h5_path)
+h5 <- Read10X_h5(inputs[["h5"]])
 ```
 
 ```{r}
@@ -73,6 +87,16 @@ sobj
 sobj[["percent.mt"]] <- PercentageFeatureSet(sobj, pattern = "^MT")
 ```
 
+```{r}
+h5$Peaks %>% dim
+h5$Peaks[str_detect(rownames(h5$Peaks), pattern = "chr"), ] %>% dim
+```
+
+```{r}
+h5$Peaks <- h5$Peaks[str_detect(rownames(h5$Peaks), pattern = "chr"), ]
+h5$Peaks %>% dim
+```
+
 ```{r tags=c()}
 annotation <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79, verbose = F)
 seqlevelsStyle(annotation) <- "UCSC"
@@ -83,28 +107,42 @@ sobj[["ATAC"]] <- CreateChromatinAssay(
   counts = h5$Peaks,
   sep = c(":", "-"),
   genome = "mm10",
-  fragments = fragments_path,
+  fragments = inputs[["fragments"]],
   annotation = annotation,
   verbose = F
 )
 ```
 
-```{r}
-DefaultAssay(sobj) <- "ATAC"
-genome(sobj) <- "mm10"
-sobj <- NucleosomeSignal(sobj, verbose = F)
-sobj <- TSSEnrichment(sobj, verbose = F)
-```
-
-# Subset to only diverse cells
+# Subset to only Diverse cells
 
 ```{r}
-diverse_cells <- (sobj[[]] %>% rownames)[sobj[[]] %>% rownames %>% str_sub(start=-1) %>% str_detect("1") %>% which]
-diverse_cells %>% length
+diverse_cells <- (sobj[[]] %>% rownames())[sobj[[]] %>%
+  rownames() %>%
+  str_sub(start = -1) %>%
+  str_detect("1") %>%
+  which()]
+diverse_cells %>% length()
 ```
 
 ```{r}
 sobj <- sobj %>% subset(cells = diverse_cells)
+```
+
+## Calculate more metadata
+
+```{r}
+DefaultAssay(sobj) <- "ATAC"
+genome(sobj) <- "mm10"
+```
+
+```{r}
+sobj <- NucleosomeSignal(sobj)
+```
+
+```{r}
+Sys.time() %>% print
+sobj <- TSSEnrichment(sobj)
+Sys.time() %>% print
 ```
 
 # Find thresholds for feature filtering
@@ -130,8 +168,8 @@ thresholds
 ## Plotting functions
 
 ```{r}
-plot_vln <- \(plot) plot + NoLegend() + theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank())
-plot_lines <- \(plot, feat) (plot + geom_hline(yintercept = thresholds[[feat]][["high"]], linetype = "dashed") + geom_hline(yintercept = thresholds[[feat]][["low"]], linetype = "dashed")) %>% plot_vln
+plot_vln <- \(plot) plot + NoLegend() + theme(axis.title.x = element_blank(), axis.text.x = element_blank(), axis.ticks.x = element_blank())
+plot_lines <- \(plot, feat) (plot + geom_hline(yintercept = thresholds[[feat]][["high"]], linetype = "dashed") + geom_hline(yintercept = thresholds[[feat]][["low"]], linetype = "dashed")) %>% plot_vln()
 ```
 
 ## First feature to filter:
@@ -281,8 +319,135 @@ for (feat in features) {
 }
 ```
 
+# Add motifs
+
+```{r}
+DefaultAssay(sobj) <- "ATAC"
+Idents(sobj) <- "origin"
+```
+
+```{r}
+df <- read.delim(inputs[["TSS_reference"]],
+  sep = "\t", check.names = F
+)
+```
+
+```{r tags=c()}
+df
+```
+
+```{r tags=c()}
+df$CHROM %>% unique
+```
+
+```{r}
+std_chroms <- str_c("chr", c(1:19, "X", "Y", "M"))
+std_chroms
+```
+
+```{r}
+tss <- GRanges(
+  seqnames = df$CHROM, IRanges(
+    seqnames = df$CHROM, start = df$POS,
+    end = df$POS, strand = df$STRAND
+  ),
+  symbol = df$Symbol, strand = df$STRAND, ID = df[["#Gene_IDs"]]
+)
+genome(tss) <- "mm10"
+```
+
+```{r}
+tss %>% list
+```
+
+```{r}
+gr <- granges(sobj)
+# seq_keep <- seqnames(gr) %in% seqnames(BSgenome.Mmusculus.UCSC.mm10)
+seq_keep <- seqnames(gr) %in% std_chroms
+seq_keep <- as.vector(seq_keep)
+feat_keep <- GRangesToString(grange = gr[seq_keep])
+```
+
+```{r}
+sobj[["ATAC"]] <- subset(sobj[["ATAC"]], features = feat_keep)
+gr <- gr[seq_keep]
+genome(gr) <- "mm10"
+seqlevels(gr) <- seqlevelsInUse(granges(sobj))
+```
+
+## Split peaks into proximal and distal (i.e. non-proximal)
+
+```{r}
+genome(sobj@assays$ATAC) <- "mm10"
+```
+
+```{r}
+promoters <- promoters(tss)
+overlaps <- findOverlaps(gr, promoters)
+peak_idx_proximal <- unique(overlaps@from)
+
+sobj@assays$ATAC@meta.features$peak_type <- "unclassified"
+sobj@assays$ATAC@meta.features[peak_idx_proximal, "peak_type"] <- "proximal"
+sobj@assays$ATAC@meta.features[
+  sobj@assays$ATAC@meta.features$peak_type == "unclassified",
+  "peak_type"
+] <- "distal"
+
+proximal_peaks <-
+  rownames(sobj@assays$ATAC@meta.features[
+    sobj@assays$ATAC@meta.features$peak_type
+    == "proximal",
+  ])
+distal_peaks <-
+  rownames(sobj@assays$ATAC@meta.features[
+    sobj@assays$ATAC@meta.features$peak_type
+    == "distal",
+  ])
+
+sobj[["proximal"]] <- subset(sobj[["ATAC"]], features = proximal_peaks)
+sobj[["distal"]] <- subset(sobj[["ATAC"]], features = distal_peaks)
+```
+
+```{r}
+pfm <- getMatrixSet(
+  x = JASPAR2020,
+  opts = list(
+    collection = "CORE",
+    tax_group = "vertebrates",
+    all_versions = F
+  )
+)
+```
+
+```{r}
+stopifnot(!is.null(granges(sobj)))
+```
+
+```{r}
+DefaultAssay(sobj) <- "proximal"
+sobj <- AddMotifs(
+  object = sobj,
+  genome = BSgenome.Mmusculus.UCSC.mm10,
+  assay = "proximal",
+  pfm = pfm
+)
+```
+
+```{r}
+sobj <- AddMotifs(
+  object = sobj,
+  genome = BSgenome.Mmusculus.UCSC.mm10,
+  assay = "distal",
+  pfm = pfm
+)
+```
+
 # Save Seurat object
 
 ```{r}
 saveRDS(sobj, file = str_glue("{output_dir}seurat_object_preprocessed.rds"))
+```
+
+```{r}
+Sys.time()
 ```
