@@ -1,0 +1,731 @@
+---
+jupyter:
+  jupytext:
+    formats: ipynb,Rmd
+    text_representation:
+      extension: .Rmd
+      format_name: rmarkdown
+      format_version: '1.2'
+      jupytext_version: 1.14.4
+  kernelspec:
+    display_name: R
+    language: R
+    name: ir
+---
+
+```{r}
+end_time <- Sys.time()
+end_time
+```
+
+# ATAC processing
+
+```{r}
+source("helpers.R")
+```
+
+```{r}
+invisible(sapply(c(
+  "TFBSTools",
+  "stringr",
+  # "patchwork",
+  # "ggplot2",
+  "Seurat",
+  "GenomicRanges",
+  "BSgenome.Mmusculus.UCSC.mm10",
+  "JASPAR2020",
+  "BRGenomics",
+  "motifmatchr",
+  "Signac"
+), FUN = function(x) {
+  suppressPackageStartupMessages(library(x, character.only = T))
+}))
+```
+
+```{r}
+str_glue("- project_path: {project_path}")
+str_glue("- output_dir: {output_dir}")
+str_glue("- plot_dir: {plot_dir}")
+str_glue("- seed: {seed}")
+```
+
+```{r}
+inputs <- c(
+  "post_SAILERX_rds" = str_glue("{output_dir}seurat_object_post_SAILERX.rds"),
+  "sailerx_cluster_colours" = str_glue("{output_dir}sailerx_cluster_colours")
+)
+outputs <- c(
+  "rds" = str_c(output_dir, "seurat_object_post_1.6.rds")
+)
+```
+
+```{r}
+"inputs:"
+inputs
+"outputs:"
+outputs
+```
+
+```{r}
+cluster_mapping_new_to_old <- list(
+  "0" = "1",
+  "1" = "6",
+  "2" = "3",
+  "3" = "2",
+  "4" = "4",
+  "5" = "0",
+  "6" = "7",
+  "7" = "8"
+)
+cluster_mapping_new_to_old
+```
+
+```{r}
+cluster_mapping <- list(
+  "p0" = "5",
+  "p1" = "?",
+  "p2" = "3",
+  "p3" = "2",
+  "p4" = "4",
+  "p5" = "0",
+  "p6" = "1",
+  "p7" = "6",
+  "p8" = "7"
+)
+cluster_mapping
+```
+
+---
+
+
+# Read data
+
+```{r}
+sobj <- readRDS(inputs["post_SAILERX_rds"])
+```
+
+```{r}
+cluster_colours <- read.table(inputs[["sailerx_cluster_colours"]])$V2
+names(cluster_colours) <- 0:(length(cluster_colours) - 1)
+cluster_colours
+```
+
+```{r}
+DimPlot(
+  sobj,
+  group.by = "sailerx_clusters",
+  label = T, label.box = T,
+  cols = cluster_colours
+) +
+  coord_fixed()
+```
+
+---
+
+
+# Motifs, run chromVAR
+
+```{r}
+sobj[["ATAC"]]
+```
+
+```{r}
+DefaultAssay(sobj) <- "ATAC"
+Idents(sobj) <- "origin"
+```
+
+```{r}
+stopifnot(!is.null(sobj[["proximal"]]))
+stopifnot(!is.null(sobj[["distal"]]))
+```
+
+```{r}
+sobj <- RunChromVAR(
+    object = sobj,
+    genome = BSgenome.Mmusculus.UCSC.mm10,
+    new.assay.name = str_c("proximal", "Chromvar"),
+    assay = "proximal"
+  )
+
+sobj <- RunChromVAR(
+    object = sobj,
+    genome = BSgenome.Mmusculus.UCSC.mm10,
+    new.assay.name = str_c("distal", "Chromvar"),
+    assay = "distal"
+  )
+```
+
+```{r}
+sobj
+```
+
+---
+
+
+# Functions for converting between motif ID and name
+
+```{r}
+pfm <- getMatrixSet(
+  x = JASPAR2020,
+  opts = list(
+    collection = "CORE",
+    tax_group = "vertebrates",
+    all_versions = F
+  )
+)
+```
+
+```{r}
+max_idx <- length(pfm)
+pfm_tags <- lapply(lapply(1:max_idx, FUN = \(i) tags(pfm[[i]])), FUN = \(x) x[c("alias", "description", "family", "species")])
+pfm_tags %>% head
+pfm_tags %>% length
+```
+
+```{r}
+motifs_list <- list(
+  "id" = lapply(1:max_idx, FUN = \(i) ID(pfm[[i]])) %>% c,
+  "name" = lapply(1:max_idx, FUN = \(i) name(pfm[[i]])) %>% c,
+  "alias" = lapply(1:max_idx, FUN = \(i) pfm_tags[[i]][["alias"]]) %>% c,
+  "description" = lapply(1:max_idx, FUN = \(i) pfm_tags[[i]][["description"]]) %>% c,
+  "family" = lapply(1:max_idx, FUN = \(i) pfm_tags[[i]][["family"]]) %>% c,
+  "species" = lapply(1:max_idx, FUN = \(i) pfm_tags[[i]][["species"]])
+)
+motifs_list %>% lapply(., FUN = \(x) head(x, n=4)) 
+```
+
+```{r}
+names(motifs_list)
+```
+
+```{r}
+motifs <- tibble(motifs_list$id, motifs_list$name, motifs_list$alias, motifs_list$description, motifs_list$family, motifs_list$species)
+colnames(motifs) <- names(motifs_list)
+motifs %>% head
+motifs %>% tail
+```
+
+```{r}
+get_motif_id <- Vectorize(
+  function(query_name) {
+    motifs %>% dplyr::filter(name == query_name) %>% pull(id) %>% as.character %>% return
+    # return(motif_dict %>% dplyr::filter(name == query_name) %>% pull(id))
+  }
+)
+get_motif_name <- Vectorize(
+  function(query_id) {
+    motifs %>% dplyr::filter(id == query_id) %>% pull(name) %>% as.character %>% return
+    # return(motif_dict %>% dplyr::filter(id == query_id) %>% pull(name))
+  }
+)
+get_motif_family <- Vectorize(
+  function(query_id) {
+    motifs %>% dplyr::filter(id == query_id) %>% pull(family) %>% as.character %>% return
+  }
+)
+get_motif_description <- Vectorize(
+  function(query_id) {
+    motifs %>% dplyr::filter(id == query_id) %>% pull(description) %>% as.character %>% return
+  }
+)
+```
+
+```{r}
+get_motif_id("Sox17")
+```
+
+```{r}
+get_motif_name("MA0868.2")
+```
+
+```{r}
+get_motif_name("MA0868.2") %>% unname
+```
+
+```{r}
+get_motif_family("MA0868.2")
+get_motif_description("MA0868.2")
+```
+
+```{r}
+motifobj <- sobj
+```
+
+```{r}
+rownames(motifobj@assays$proximalChromvar@data) %>% head
+rownames(motifobj@assays$distalChromvar@data) %>% head
+```
+
+```{r}
+rownames(motifobj@assays$proximalChromvar@data) <- (rownames(motifobj[["proximalChromvar"]]) %>% get_motif_name %>% unname)
+rownames(motifobj@assays$distalChromvar@data) <- (rownames(motifobj[["distalChromvar"]]) %>% get_motif_name %>% unname)
+```
+
+```{r}
+rownames(motifobj@assays$proximalChromvar@data) %>% head
+rownames(motifobj@assays$distalChromvar@data) %>% head
+```
+
+---
+
+
+# Motif markers for SAILERX clusters
+
+
+## All clusters
+
+```{r}
+n_clusters <- sobj[[]][["sailerx_clusters"]] %>% unique %>% length
+n_clusters
+```
+
+```{r}
+min_pct <- 0.05
+```
+
+### Finding motif markers for proximal peaks
+
+```{r}
+DefaultAssay(sobj) <- "proximalChromvar"
+Idents(sobj) <- "sailerx_clusters"
+```
+
+```{r tags=c()}
+markers_proximal_all <- list()
+Idents(sobj) <- "sailerx_clusters"
+for (i in 0:(n_clusters-1) %>% as.character) {
+  markers_proximal_all[[i]] <- FindMarkers(
+    sobj,
+    ident.1 = i,
+    only.pos = T,
+    min.pct = min_pct,
+    assay = "proximalChromvar"
+  )
+}
+lapply(markers_proximal_all, dim)
+```
+
+```{r}
+for (i in as.character(0:(n_clusters-1))) {
+  markers_proximal_all[[i]] <- markers_proximal_all[[i]] %>% rownames_to_column 
+  markers_proximal_all[[i]] <- markers_proximal_all[[i]] %>% rename(rowname = "motif_ID")
+  markers_proximal_all[[i]][["motif_name"]] <- markers_proximal_all[[i]][["motif_ID"]] %>% get_motif_name
+  markers_proximal_all[[i]][["motif_family"]] <- markers_proximal_all[[i]][["motif_ID"]] %>% get_motif_family
+  markers_proximal_all[[i]][["motif_description"]] <- markers_proximal_all[[i]][["motif_ID"]] %>% get_motif_description
+  markers_proximal_all[[i]] <- markers_proximal_all[[i]] %>% arrange(desc(avg_log2FC))
+  markers_proximal_all[[i]] %>% write_tsv(file = str_c(output_dir, "/markers_motifs_proximal_all_clusters_cluster_", i, ".tsv"))
+}
+```
+
+### Finding motif markers for distal peaks
+
+```{r}
+DefaultAssay(sobj) <- "distalChromvar"
+Idents(sobj) <- "sailerx_clusters"
+```
+
+```{r tags=c()}
+markers_distal_all <- list()
+for (i in 0:(n_clusters-1) %>% as.character) {
+  markers_distal_all[[i]] <- FindMarkers(
+    sobj,
+    ident.1 = i,
+    only.pos = T,
+    min.pct = min_pct,
+    assay = "distalChromvar"
+  )
+}
+lapply(markers_distal_all, dim)
+```
+
+```{r}
+for (i in as.character(0:(n_clusters-1))) {
+  markers_distal_all[[i]] <- markers_distal_all[[i]] %>% rownames_to_column 
+  markers_distal_all[[i]] <- markers_distal_all[[i]] %>% rename(rowname = "motif_ID")
+  markers_distal_all[[i]][["motif_name"]] <- markers_distal_all[[i]][["motif_ID"]] %>% get_motif_name
+  markers_distal_all[[i]][["motif_family"]] <- markers_distal_all[[i]][["motif_ID"]] %>% get_motif_family
+  markers_distal_all[[i]][["motif_description"]] <- markers_distal_all[[i]][["motif_ID"]] %>% get_motif_description
+  markers_distal_all[[i]] <- markers_distal_all[[i]] %>% arrange(desc(avg_log2FC))
+  markers_distal_all[[i]] %>% write_tsv(file = str_c(output_dir, "/markers_motifs_distal_all_clusters_cluster_", i, ".tsv"))
+}
+```
+
+---
+
+
+# Plotting markers
+
+```{r}
+markers_distal <- markers_distal_all
+markers_proximal <- markers_proximal_all
+```
+
+```{r}
+top_markers <- list()
+top_markers[["distal"]] <- lapply(markers_distal, FUN = \(x) x %>%
+    slice_max(n = 4, order_by = avg_log2FC))
+top_markers[["proximal"]] <- lapply(markers_proximal, FUN = \(x) x %>%
+    slice_max(n = 4, order_by = avg_log2FC))
+lapply(top_markers, head)
+```
+
+```{r}
+top_markers %>% names
+```
+
+```{r}
+only_markers <- list()
+for (peak_type in names(top_markers)) {
+  for (i in names(top_markers[[peak_type]])) {
+    only_markers[[peak_type]][[i]] <- top_markers[[peak_type]][[i]][["motif_name"]]
+  }
+}
+only_markers
+```
+
+## Collage plots
+
+```{r tags=c()}
+plot_top_markers <- function(i,
+                             peak_type = "distal",
+                             cluster_type = "sailerx_clusters",
+                             feature_ids = 1:2,
+                             reduction = "UMAP_SAILERX") {
+  i <- i %>% as.character()
+  saved_assay <- DefaultAssay(sobj)
+  DefaultAssay(sobj) <- str_c(peak_type, "Chromvar")
+  n_clusters <- sobj[[]][[cluster_type]] %>%
+    unique() %>%
+    length()
+  colours <- cluster_colours
+  markers <- list()
+  markers[[1]] <- only_markers[[peak_type]][[i]][feature_ids[1]]
+  markers[[2]] <- only_markers[[peak_type]][[i]][feature_ids[2]]
+  if (typeof(i) != "character") {
+    i <- as.character(i)
+  }
+  plot <- (
+    (
+      (FeaturePlot(
+        sobj,
+        features = get_motif_id(markers[[1]]),
+        cols = c("moccasin", "darkslategray"),
+        reduction = reduction # ,
+        # max.cutoff = "q100"
+      ) +
+        coord_fixed() +
+        labs(title = markers[[1]]) +
+        xlab("") +
+        ylab("")
+      # labs(title = markers[[1]], subtitle = get_motif_id(markers[[1]]))
+      ) +
+        theme(
+          plot.title = element_text(face = "plain")
+        ) |
+        (FeaturePlot(
+          sobj,
+          features = get_motif_id(markers[[2]]),
+          cols = c("moccasin", "darkslategray"),
+          reduction = reduction # ,
+          # max.cutoff = "q100"
+        ) +
+          coord_fixed() +
+          labs(title = markers[[2]]) +
+          xlab("") +
+          ylab("")
+        # labs(title = markers[[2]], subtitle = get_motif_id(markers[[2]]))
+        ) +
+          theme(
+            plot.title = element_text(face = "plain")
+          )
+    ) /
+      (
+        (DimPlot(
+          sobj,
+          reduction = reduction,
+          group.by = cluster_type,
+          # label = T,
+          # label.box = T,
+          cols = colours
+        ) + coord_fixed() +
+          theme(
+            plot.title = element_text(face = "plain")
+          )
+        ) |
+          (
+            (VlnPlot(
+              sobj,
+              features = get_motif_id(markers[[1]]),
+              pt.size = 0,
+              cols = colours
+            ) +
+              NoLegend() +
+              labs(title = markers[[1]]) + theme(
+                plot.title = element_text(face = "plain")
+              ) +
+              ylab("")
+            ) /
+              (VlnPlot(
+                sobj,
+                features = get_motif_id(markers[[2]]),
+                pt.size = 0,
+                cols = colours
+              ) +
+                NoLegend() +
+                labs(title = markers[[2]]) +
+                theme(
+                  plot.title = element_text(face = "plain")
+                )
+              )
+          )
+      )
+  ) + plot_annotation(
+    title = str_c("Top markers for cluster ", i),
+    subtitle = str_c(
+      "1: ", markers[[1]], " / ", get_motif_id(markers[[1]]),
+      "\n",
+      "2: ", markers[[2]], " / ", get_motif_id(markers[[2]])
+    ),
+    caption = str_c("[", peak_type, " peaks]"),
+    theme = theme(
+      plot.title = element_text(face = "bold", size = 20),
+      plot.subtitle = element_text(face = "bold", size = 15),
+      plot.caption = element_text(face = "italic", size = 15)
+    )
+  )
+  DefaultAssay(sobj) <- saved_assay
+  return(plot)
+}
+```
+
+```{r}
+cluster_mapping_new_to_old
+```
+
+```{r}
+cluster_mapping
+```
+
+```{r}
+plot_top_markers(cluster_mapping[["p0"]])
+plot_top_markers(cluster_mapping[["p0"]], feature_ids = 3:4)
+```
+
+```{r}
+plot_top_markers(cluster_mapping[["p4"]])
+plot_top_markers(cluster_mapping[["p4"]], feature_ids = 3:4)
+```
+
+```{r}
+plot_top_markers(3)
+plot_top_markers(3, feature_ids = 3:4)
+```
+
+```{r}
+plot_top_markers(0, peak_type = "proximal")
+plot_top_markers(0, feature_ids = 3:4, peak_type = "proximal")
+```
+
+```{r}
+plot_top_markers(3, peak_type = "proximal")
+plot_top_markers(3, feature_ids = 3:4, peak_type = "proximal")
+```
+
+```{r}
+for (assay in c("proximal", "distal")) {
+  for (cluster in 0:(n_clusters - 1) %>% as.character()) {
+    plot <- plot_top_markers(cluster, peak_type = assay)
+    width <- 10
+    height <- 10
+    ggsave(
+      plot = plot,
+      filename = str_c(
+        plot_dir, "top_markers_motifs_cluster",
+        cluster, "_",
+        assay, "peaks",
+        ".svg"
+      ),
+      width = width,
+      height = height,
+      device = "svg",
+      units = "in"
+    )
+  }
+}
+```
+
+---
+
+
+## DotPlots
+
+```{r}
+Idents(motifobj) <- "sailerx_clusters"
+```
+
+```{r}
+DotPlot(motifobj, assay = "distalChromvar", features = only_markers[["distal"]][["0"]], cols = c("moccasin", "darkslategray"))
+DotPlot(motifobj, assay = "proximalChromvar", features = only_markers[["proximal"]][["0"]], cols = c("moccasin", "darkslategray"))
+```
+
+```{r}
+DotPlot(motifobj, assay = "distalChromvar", features = only_markers[["distal"]][["3"]], cols = c("moccasin", "darkslategray"))
+DotPlot(motifobj, assay = "proximalChromvar", features = only_markers[["proximal"]][["3"]], cols = c("moccasin", "darkslategray"))
+```
+
+```{r}
+DotPlot(
+  motifobj,
+  assay = "distalChromvar",
+  features = markers_distal[["0"]][1:10, ][["motif_name"]],
+  cols = c("moccasin", "darkslategray")
+) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+DotPlot(
+  motifobj,
+  assay = "proximalChromvar",
+  features = markers_proximal[["0"]][1:10, ][["motif_name"]],
+  cols = c("moccasin", "darkslategray")
+) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+```
+
+```{r}
+dotplot <- DotPlot(
+  sobj,
+  assay = "distalChromvar",
+  features = markers_distal[["3"]][1:10, ] %>% rownames() %>% get_motif_id(),
+  cols = c("moccasin", "darkslategray")
+) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+dotplot
+DotPlot(
+  sobj,
+  assay = "proximalChromvar",
+  features = markers_distal[["3"]][1:10, ] %>% rownames() %>% get_motif_id(),
+  cols = c("moccasin", "darkslategray")
+) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+```
+
+```{r}
+dotplots <- list()
+for (assay in c("proximal", "distal")) {
+  dotplots[[assay]] <- list()
+  for (cluster in 0:(n_clusters - 1) %>% as.character()) {
+    if (assay == "distal") {
+      markers <- markers_distal[[cluster]]
+    } else if (assay == "proximal") {
+      markers <- markers_proximal[[cluster]]
+      # if (cluster == "0") jump_this <- T
+    }
+    if (dim(markers)[[1]] >= 10) {
+      upper <- 15
+    } else {
+      upper <- dim(markers)[[1]]
+    }
+    dotplots[[assay]][[cluster]] <- DotPlot(
+      motifobj,
+      assay = str_c(assay, "Chromvar"),
+      group.by = "sailerx_clusters",
+      features = markers[1:upper, ][["motif_name"]],
+      cols = c("moccasin", "darkslategray")
+    ) +
+      labs(
+        title = "Differentially active motifs",
+        subtitle = str_c(
+          "in cluster ", cluster, # ",\n",
+          " (", dim(markers)[[1]], " markers in total w/ pct.1 > ", min_pct, ")"
+        ),
+        caption = str_glue("[{assay %>% str_to_title} peaks]")
+      ) +
+      guides(
+        colour = guide_colourbar(
+          title = "Average\nExpression",
+          title.position = "left",
+          direction = "horizontal",
+          order = 1
+        ),
+        size = guide_legend(
+          title = "Percent\nExpressed",
+          label.position = "top",
+          order = 2
+        ) # , title.hjust = .5)
+      ) +
+      theme(
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 9),
+        axis.text.y = element_text(size = 9),
+        axis.title.x = element_text(size = 11),
+        axis.title.y = element_text(size = 11),
+        plot.caption = element_text(face = "italic"),
+        legend.position = "bottom",
+        legend.title = element_text(size = 10),
+        legend.margin = margin(.2, .2, .2, .2, "cm"),
+        legend.justification = "center",
+        legend.background = element_rect(fill = "lightgray", linetype = "solid"),
+        legend.box = "horizontal"
+      )
+  }
+}
+
+dotplots[["proximal"]][["0"]]
+dotplots[["distal"]][["0"]]
+```
+
+```{r}
+dotplots[["proximal"]][["2"]]
+dotplots[["distal"]][["2"]]
+```
+
+```{r}
+dotplots[["proximal"]][["5"]]
+dotplots[["distal"]][["5"]]
+```
+
+```{r}
+for (assay in c("proximal", "distal")) {
+  for (cluster in 0:(n_clusters - 1) %>% as.character()) {
+    plot <- dotplots[[assay]][[cluster]]
+    n_features <- plot$data$features.plot %>%
+      unique() %>%
+      length()
+    n_clusters <- dotplots$distal$`0`$data$id %>%
+      unique() %>%
+      levels() %>%
+      max() %>%
+      as.numeric()
+    if (n_features < 8) {
+      n_features <- 10
+    }
+    width <- n_features + 3
+    height <- n_clusters + 8
+    ggsave(
+      plot = plot,
+      filename = str_c(
+        plot_dir, "dotplot_motifs_cluster",
+        cluster, "_",
+        assay, "peaks",
+        ".svg"
+      ),
+      width = width,
+      height = height,
+      device = "svg",
+      units = "cm"
+    )
+  }
+}
+```
+
+```{r}
+for (cluster in 0:(n_clusters - 1) %>% as.character()) {
+  write.csv(markers_distal[[cluster]], file = str_c(output_dir, "DE_motifs_cluster_", cluster, "_distal_peaks", ".csv"))
+  write.csv(markers_proximal[[cluster]], file = str_c(output_dir, "DE_motifs_cluster_", cluster, "_proximal_peaks", ".csv"))
+}
+```
+
+```{r}
+end_time <- Sys.time()
+end_time
+```
+
+---

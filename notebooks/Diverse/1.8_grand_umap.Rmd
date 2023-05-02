@@ -1,0 +1,418 @@
+---
+jupyter:
+  jupytext:
+    formats: ipynb,Rmd
+    text_representation:
+      extension: .Rmd
+      format_name: rmarkdown
+      format_version: '1.2'
+      jupytext_version: 1.14.4
+  kernelspec:
+    display_name: R
+    language: R
+    name: ir
+---
+
+```{r}
+Sys.time()
+```
+
+---
+
+
+# UMAP for Diverse sample with all trajectories plus identifying marker
+
+```{r}
+invisible(sapply(c(
+  "stringr",
+  "ggplot2",
+  "dplyr",
+  "tibble",
+  "slingshot",
+  "RColorBrewer",
+  "ggnewscale",
+  "rjson",
+  "Seurat",
+  "Signac"
+), FUN = function(x) {
+  suppressPackageStartupMessages(library(x, character.only = T))
+}))
+
+set.seed(12345)
+```
+
+```{r}
+project_path <- Sys.getenv("PROJECT_PATH")
+output_dir <- str_c(project_path, "/data/processed/notebooks/Diverse/")
+plot_dir <- str_c(output_dir, "plots/")
+```
+
+```{r}
+inputs <- c(
+  "post_SAILERX_rds" = str_glue("{output_dir}seurat_object_post_SAILERX.rds"),
+  "sailerx_cluster_colours" = str_glue("{output_dir}sailerx_cluster_colours"),
+  "trajectory_lineages" = str_glue("{output_dir}trajectory_lineages.json")
+)
+```
+
+```{r}
+colours_features <- c("moccasin", "darkslategray")
+colours_features
+```
+
+```{r}
+n_clusters <- (sobj[["sailerx_clusters"]] %>% unique() %>% dim())[1]
+```
+
+```{r}
+sailerx_colours <- read.table(inputs[["sailerx_cluster_colours"]])$V2
+names(sailerx_colours) <- 0:(length(sailerx_colours) - 1)
+sailerx_colours
+```
+
+```{r}
+sobj <- readRDS(inputs["post_SAILERX_rds"])
+```
+
+```{r}
+traj_lineages <- rjson::fromJSON(file = inputs[["trajectory_lineages"]])
+```
+
+```{r}
+for (traj in names(traj_lineages)) {
+  traj_lineages[[traj]] <- traj_lineages[[traj]] %>% as.data.frame()
+}
+```
+
+```{r}
+defining_genes <- c("Mecom", "Mfsd2b", "F13a1", "Ngp", "Cd200r3")
+
+cl_colours <- list(
+  "Mecom" = "skyblue",
+  "Ngp" = "salmon",
+  "Cd200r3" = "orange2",
+  "F13a1" = "purple",
+  "Mfsd2b" = "olivedrab1"
+)
+
+base_colour <- "grey20"
+
+lineage_colour <- "ivory3"
+lineage_colours <- list(
+  "7" = "olivedrab3",
+  "4" = "mediumorchid2",
+  "6" = "tan1",
+  "1" = "lightsalmon2"
+)
+
+prob <- .80
+```
+
+```{r}
+make_unique_cells <- function(cell_list) {
+  keep <- list()
+  for (id in names(cell_list)) {
+    keep[[id]] <- cell_list[[id]]
+    for (cmp in names(cell_list)[!(names(cell_list) == id)]) {
+      keep[[id]] <- keep[[id]][!keep[[id]] %in% cell_list[[cmp]]]
+    }
+  }
+  return(keep)
+}
+```
+
+```{r}
+df <- sobj[[]][c("orig.ident", "sailerx_clusters")]
+df <- df %>% cbind(sobj@reductions$UMAP_SAILERX@cell.embeddings)
+for (gene in defining_genes) {
+  tmp <- sobj@assays$RNA@data[gene, ] %>% as.data.frame()
+  colnames(tmp) <- gene
+  df <- df %>% cbind(tmp)
+  # colnames(df)[str_detect(colnames(df), pattern = gene)] <- gene
+}
+```
+
+```{r}
+cells <- list()
+cells[["Mecom"]] <- df[df$Mecom > quantile(probs = prob, x = df$Mecom), ] %>% rownames()
+cells[["F13a1"]] <- df[df$F13a1 > quantile(probs = prob, x = df$F13a1), ] %>% rownames()
+cells[["Ngp"]] <- df[df$Ngp > quantile(probs = prob, x = df$Ngp), ] %>% rownames()
+cells[["Cd200r3"]] <- df[df$Cd200r3 > quantile(probs = prob, x = df$Cd200r3), ] %>% rownames()
+cells[["Mfsd2b"]] <- df[df$Mfsd2b > quantile(probs = prob, x = df$Mfsd2b), ] %>% rownames()
+
+keeped <- make_unique_cells(cells)
+```
+
+```{r}
+p + NoLegend()
+```
+
+```{r}
+p + NoLegend()
+```
+
+```{r}
+p + NoLegend()
+```
+
+```{r}
+p + NoLegend()
+```
+
+```{r}
+make_grand_umap <- function() {
+  return(
+    ggplot() +
+      geom_point(
+        data = df,
+        aes(
+          x = UMAPSAILERX_1,
+          y = UMAPSAILERX_2
+        ),
+        color = base_colour
+      ) +
+      new_scale("color") +
+      geom_point(
+        data = df[keeped[["Ngp"]], ],
+        aes(
+          x = UMAPSAILERX_1,
+          y = UMAPSAILERX_2,
+          color = Ngp,
+          alpha = Ngp
+        )
+      ) +
+      scale_colour_gradient(low = base_colour, high = cl_colours[["Ngp"]]) +
+      new_scale_color() +
+      new_scale("alpha") +
+      geom_point(
+        data = df[keeped[["Mecom"]], ],
+        aes(
+          x = UMAPSAILERX_1,
+          y = UMAPSAILERX_2,
+          color = Mecom,
+          alpha = Mecom
+        )
+      ) +
+      scale_colour_gradient(low = base_colour, high = cl_colours[["Mecom"]]) +
+      new_scale_color() +
+      new_scale("alpha") +
+      geom_point(
+        data = df[keeped[["Cd200r3"]], ],
+        aes(
+          x = UMAPSAILERX_1,
+          y = UMAPSAILERX_2,
+          color = Cd200r3,
+          alpha = Cd200r3
+        )
+      ) +
+      scale_colour_gradient(low = base_colour, high = cl_colours[["Cd200r3"]]) +
+      new_scale_color() +
+      new_scale("alpha") +
+      geom_point(
+        data = df[keeped[["Mfsd2b"]], ],
+        aes(
+          x = UMAPSAILERX_1,
+          y = UMAPSAILERX_2,
+          color = Mfsd2b,
+          alpha = Mfsd2b
+        )
+      ) +
+      scale_colour_gradient(low = base_colour, high = cl_colours[["Mfsd2b"]]) +
+      new_scale_color() +
+      new_scale("alpha") +
+      geom_point(
+        data = df[keeped[["F13a1"]], ],
+        aes(
+          x = UMAPSAILERX_1,
+          y = UMAPSAILERX_2,
+          color = F13a1,
+          alpha = F13a1
+        )
+      ) +
+      scale_colour_gradient(low = base_colour, high = cl_colours[["F13a1"]]) +
+      coord_fixed() +
+      theme_classic() +
+      theme(
+        legend.position = "bottom",
+        legend.box = "vertical",
+        legend.margin = unit(1, "mm")
+      )
+  )
+}
+
+p <- make_grand_umap()
+```
+
+```{r}
+p + NoLegend()
+```
+
+```{r}
+p + NoLegend()
+```
+
+```{r}
+p
+```
+
+```{r}
+ggsave(p,
+  filename = str_c(plot_dir, "grand_umap_w_legends.svg"), device = "svg", units = "in", width = 5.5, height = 7.5
+)
+ggsave(p + NoLegend(),
+  filename = str_c(plot_dir, "grand_umap_w_o_legends.svg"), device = "svg", units = "in", width = 5.5, height = 5.5
+)
+```
+
+```{r}
+for (traj in names(traj_lineages)) {
+  p <- p +
+    geom_segment(
+      data = traj_lineages[[traj]],
+      aes(
+        x = x,
+        y = y,
+        xend = xend,
+        yend = yend
+      ),
+      # alpha = .6,
+      # colour = lineage_colour,
+      colour = lineage_colours[[traj]],
+      linewidth = 1
+    )
+}
+
+p + NoLegend()
+```
+
+```{r}
+ggsave(p,
+  filename = str_c(plot_dir, "grand_umap_w_legends_w_trajectories.svg"), device = "svg", units = "in", width = 5.5, height = 7.5
+)
+ggsave(p + NoLegend(),
+  filename = str_c(plot_dir, "grand_umap_w_o_legends_w_trajectories.svg"), device = "svg", units = "in", width = 5.5, height = 5.5
+)
+```
+
+```{r}
+p <- make_grand_umap()
+for (traj in names(traj_lineages)) {
+  p <- p +
+    geom_segment(
+      data = traj_lineages[[traj]],
+      aes(
+        x = x,
+        y = y,
+        xend = xend,
+        yend = yend
+      ),
+      # alpha = .6,
+      colour = lineage_colour,
+      # colour = lineage_colours[[traj]],
+      linewidth = 1
+    )
+}
+
+p + NoLegend()
+```
+
+```{r}
+ggsave(p,
+  filename = str_c(plot_dir, "grand_umap_w_legends_w_trajectories_one_colour.svg"), device = "svg", units = "in", width = 5.5, height = 7.5
+)
+ggsave(p + NoLegend(),
+  filename = str_c(plot_dir, "grand_umap_w_o_legends_w_trajectories_one_colour.svg"), device = "svg", units = "in", width = 5.5, height = 5.5
+)
+```
+
+```{r}
+FeaturePlot(sobj, features = "F13a1", coord.fixed = T) + geom_segment(data = traj_lineages[["4"]], aes(x = x, y = y, xend = xend, yend = yend))
+```
+
+```{r}
+FeaturePlot(sobj, features = "F13a1", coord.fixed = T) + geom_segment(data = traj_lineages[["4"]], aes(x = x, y = y, xend = xend, yend = yend))
+```
+
+```{r}
+FeaturePlot(sobj, features = "Ngp", coord.fixed = T) + geom_segment(data = traj_lineages[["1"]], aes(x = x, y = y, xend = xend, yend = yend))
+```
+
+```{r}
+FeaturePlot(sobj, features = "Ngp", coord.fixed = T) + geom_segment(data = traj_lineages[["6"]], aes(x = x, y = y, xend = xend, yend = yend))
+```
+
+```{r}
+FeaturePlot(sobj, features = "Cd200r3", coord.fixed = T) + geom_segment(data = traj_lineages[["6"]], aes(x = x, y = y, xend = xend, yend = yend))
+```
+
+```{r}
+FeaturePlot(sobj, features = "Cd200r3", coord.fixed = T) + geom_segment(data = traj_lineages[["7"]], aes(x = x, y = y, xend = xend, yend = yend))
+```
+
+```{r}
+FeaturePlot(sobj, features = "Mfsd2b", coord.fixed = T) + geom_segment(data = traj_lineages[["7"]], aes(x = x, y = y, xend = xend, yend = yend))
+```
+
+```{r}
+FeaturePlot(sobj, features = "Mfsd2b", coord.fixed = T) + geom_segment(data = traj_lineages[["8"]], aes(x = x, y = y, xend = xend, yend = yend))
+```
+
+```{r}
+p + NoLegend()
+```
+
+```{r}
+p <- DimPlot(
+  sobj,
+  group.by = "sailerx_clusters",
+  label = T,
+  label.box = T,
+  cols = sailerx_colours,
+  pt.size = .8,
+) +
+  coord_fixed()
+p
+```
+
+```{r}
+p <- DimPlot(
+  sobj,
+  group.by = "sailerx_clusters",
+  label = T,
+  label.box = T,
+  cols = sailerx_colours,
+  pt.size = .4,
+) +
+  coord_fixed()
+p
+```
+
+```{r}
+# ggsave(p, filename = str_c(plot_dir, "umap_sailerx_larger_points.svg"), device = "svg", units = "in", width = 7, height = 7)
+```
+
+```{r}
+sobj[[]] %>% head
+```
+
+```{r}
+df %>% head
+```
+
+```{r tags=c()}
+base::cbind(sobj[[]], df[,!(names(df) %in% c("sailerx_clusters", "orig.ident"))]) %>% dim
+```
+
+```{r tags=c()}
+base::cbind(sobj[[]], df[,!(names(df) %in% c("sailerx_clusters", "orig.ident"))]) %>% names
+```
+
+```{r tags=c()}
+base::cbind(sobj[[]], df[,!(names(df) %in% c("sailerx_clusters", "orig.ident"))]) %>% write.table(file = str_c(output_dir, "metadata_post_grand_umap.tsv"), sep = "\t")
+```
+
+---
+
+```{r}
+Sys.time()
+```
