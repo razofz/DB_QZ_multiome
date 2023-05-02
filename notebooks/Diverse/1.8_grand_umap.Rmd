@@ -20,7 +20,7 @@ Sys.time()
 ---
 
 
-# UMAP for Diverse sample with all trajectories plus identifying marker
+# UMAP for Diverse sample with all trajectories plus identifying markers
 
 ```{r}
 invisible(sapply(c(
@@ -58,6 +58,10 @@ inputs <- c(
 ```{r}
 colours_features <- c("moccasin", "darkslategray")
 colours_features
+```
+
+```{r}
+sobj <- readRDS(inputs["post_SAILERX_rds"])
 ```
 
 ```{r}
@@ -140,23 +144,7 @@ cells[["Ngp"]] <- df[df$Ngp > quantile(probs = prob, x = df$Ngp), ] %>% rownames
 cells[["Cd200r3"]] <- df[df$Cd200r3 > quantile(probs = prob, x = df$Cd200r3), ] %>% rownames()
 cells[["Mfsd2b"]] <- df[df$Mfsd2b > quantile(probs = prob, x = df$Mfsd2b), ] %>% rownames()
 
-keeped <- make_unique_cells(cells)
-```
-
-```{r}
-p + NoLegend()
-```
-
-```{r}
-p + NoLegend()
-```
-
-```{r}
-p + NoLegend()
-```
-
-```{r}
-p + NoLegend()
+kept_cells <- make_unique_cells(cells)
 ```
 
 ```{r}
@@ -173,7 +161,7 @@ make_grand_umap <- function() {
       ) +
       new_scale("color") +
       geom_point(
-        data = df[keeped[["Ngp"]], ],
+        data = df[kept_cells[["Ngp"]], ],
         aes(
           x = UMAPSAILERX_1,
           y = UMAPSAILERX_2,
@@ -185,7 +173,7 @@ make_grand_umap <- function() {
       new_scale_color() +
       new_scale("alpha") +
       geom_point(
-        data = df[keeped[["Mecom"]], ],
+        data = df[kept_cells[["Mecom"]], ],
         aes(
           x = UMAPSAILERX_1,
           y = UMAPSAILERX_2,
@@ -197,7 +185,7 @@ make_grand_umap <- function() {
       new_scale_color() +
       new_scale("alpha") +
       geom_point(
-        data = df[keeped[["Cd200r3"]], ],
+        data = df[kept_cells[["Cd200r3"]], ],
         aes(
           x = UMAPSAILERX_1,
           y = UMAPSAILERX_2,
@@ -209,7 +197,7 @@ make_grand_umap <- function() {
       new_scale_color() +
       new_scale("alpha") +
       geom_point(
-        data = df[keeped[["Mfsd2b"]], ],
+        data = df[kept_cells[["Mfsd2b"]], ],
         aes(
           x = UMAPSAILERX_1,
           y = UMAPSAILERX_2,
@@ -221,7 +209,7 @@ make_grand_umap <- function() {
       new_scale_color() +
       new_scale("alpha") +
       geom_point(
-        data = df[keeped[["F13a1"]], ],
+        data = df[kept_cells[["F13a1"]], ],
         aes(
           x = UMAPSAILERX_1,
           y = UMAPSAILERX_2,
@@ -241,10 +229,6 @@ make_grand_umap <- function() {
 }
 
 p <- make_grand_umap()
-```
-
-```{r}
-p + NoLegend()
 ```
 
 ```{r}

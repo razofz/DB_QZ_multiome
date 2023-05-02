@@ -590,22 +590,26 @@ DotPlot(
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 ```
 
+```{r tags=c()}
+lapply(markers_distal, dim)
+```
+
 ```{r}
-dotplot <- DotPlot(
-  sobj,
-  assay = "distalChromvar",
-  features = markers_distal[["3"]][1:10, ] %>% rownames() %>% get_motif_id(),
-  cols = c("moccasin", "darkslategray")
-) +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
-dotplot
-DotPlot(
-  sobj,
-  assay = "proximalChromvar",
-  features = markers_distal[["3"]][1:10, ] %>% rownames() %>% get_motif_id(),
-  cols = c("moccasin", "darkslategray")
-) +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+# dotplot <- DotPlot(
+#   sobj,
+#   assay = "distalChromvar",
+#   features = markers_distal[["3"]][1:10, ] %>% rownames() %>% get_motif_id(),
+#   cols = c("moccasin", "darkslategray")
+# ) +
+#   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+# dotplot
+# DotPlot(
+#   sobj,
+#   assay = "proximalChromvar",
+#   features = markers_distal[["3"]][1:10, ] %>% rownames() %>% get_motif_id(),
+#   cols = c("moccasin", "darkslategray")
+# ) +
+#   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 ```
 
 ```{r}

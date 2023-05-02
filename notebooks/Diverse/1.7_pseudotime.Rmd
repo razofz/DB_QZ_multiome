@@ -43,6 +43,7 @@ inputs <- c(
   "sailerx_cluster_colours" = str_glue("{output_dir}sailerx_cluster_colours")
 )
 outputs <- c(
+  "trajectory_lineages" = str_c(output_dir, "trajectory_lineages.json")
 )
 ```
 
@@ -151,7 +152,7 @@ sce_all
 sce_all <- do_sling(
   sce_sobj = sce_sobj,
   start_cluster = start_cluster,
-  end_cluster = names(trajectory_spec)
+  end_cluster = end_clusters
 )
 
 sce_all
@@ -278,9 +279,6 @@ lapply(names(pseudotimes_of_interest), FUN = \(i) correlations[[i]] %>% summary)
 
 # Plot trajectories
 
-
-## Trajectory for end cluster 4
-
 ```{r}
 slingplot <- function(sce,
                       reduction = "UMAP_SAILERX",
@@ -343,23 +341,23 @@ lapply(c(4, 1, 6, 7), FUN = \(c) {
 ```
 
 ```{r}
-end_cluster <- as.character(end_cluster)
-quantil <- quantile(
-  abs(correlations[[end_cluster]]),
-  probs = quant, na.rm = T
-)
-highest_features <- VariableFeatures(sobj)[which(abs(correlations[[end_cluster]]) > quantil)]
-slingshot_df <- colData(sce[[traj_dict[[end_cluster]][["lvl1"]]]])
-slingshot_df[["slingshot"]] <- NULL
-slingshot_df <- slingshot_df %>% as.data.frame
+# end_cluster <- as.character(end_cluster)
+# quantil <- quantile(
+#   abs(correlations[[end_cluster]]),
+#   probs = quant, na.rm = T
+# )
+# highest_features <- VariableFeatures(sobj)[which(abs(correlations[[end_cluster]]) > quantil)]
+# slingshot_df <- colData(sce[[traj_dict[[end_cluster]][["lvl1"]]]])
+# slingshot_df[["slingshot"]] <- NULL
+# slingshot_df <- slingshot_df %>% as.data.frame
 ```
 
 ```{r}
-slingshot_df %>% as.list %>% lapply(., FUN = \(x) class(x))
+# slingshot_df %>% as.list %>% lapply(., FUN = \(x) class(x))
 ```
 
 ```{r}
-slingshot_df %>% names
+# slingshot_df %>% names
 ```
 
 ## Pseudotime heatmaps
@@ -758,7 +756,7 @@ lapply(traj_lineages, head)
 ```
 
 ```{r}
-write(toJSON(traj_lineages), file = str_c(output_dir, "trajectory_lineages.json"))
+write(toJSON(traj_lineages), file = outputs[["trajectory_lineages"]])
 ```
 
 ---

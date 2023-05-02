@@ -282,7 +282,16 @@ new_sailerx_colours
 ```
 
 ```{r}
-write.table(new_sailerx_colours, file = outputs[["sailerx_colours"]], col.names = F)
+newer_sailerx_colours <- new_sailerx_colours
+newer_sailerx_colours
+newer_sailerx_colours[["0"]] <- new_sailerx_colours[["6"]]
+newer_sailerx_colours[["6"]] <- new_sailerx_colours[["0"]]
+newer_sailerx_colours
+```
+
+```{r}
+# write.table(new_sailerx_colours, file = outputs[["sailerx_colours"]], col.names = F)
+write.table(newer_sailerx_colours, file = outputs[["sailerx_colours"]], col.names = F)
 ```
 
 ```{r}
@@ -590,6 +599,7 @@ plot_top_markers <- function(i, object = sobj, markers = only_markers) {
             (VlnPlot(
               object,
               features = markers[[i]][1],
+              pt.size = 0,
               cols = colours
             ) + NoLegend()
               + xlab("")
@@ -598,6 +608,7 @@ plot_top_markers <- function(i, object = sobj, markers = only_markers) {
               (VlnPlot(
                 object,
                 features = markers[[i]][2],
+                pt.size = 0,
                 cols = colours
               ) + NoLegend())
           )
@@ -627,6 +638,10 @@ save_plot_top_markers <- function(i, modality = "RNA") {
 for (i in unique(top_markers$cluster)) {
   save_plot_top_markers(i)
 }
+```
+
+```{r}
+plot_top_markers(4)
 ```
 
 ```{r}
@@ -853,4 +868,10 @@ ggplot(
   #   breaks = c(TRUE, FALSE)
   # ) +
   coord_fixed()
+```
+
+---
+
+```{r}
+Sys.time()
 ```
