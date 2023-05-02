@@ -32,7 +32,7 @@ import numpy as np
 import pandas as pd
 
 # %%
-output_dir = os.getenv("PROJECT_PATH") + "/data/adhoc/lower_features/"
+output_dir = os.getenv("PROJECT_PATH") + "/data/processed/notebooks/Diverse/"
 sailerx_dir = f"./SAILERX/DB_QZ/DB_QZ/"
 
 inputs = {
